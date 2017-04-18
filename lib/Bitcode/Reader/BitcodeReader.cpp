@@ -4288,6 +4288,8 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         TCK = CallInst::TCK_MustTail;
       if (CCInfo & (1 << bitc::CALL_NOTAIL))
         TCK = CallInst::TCK_NoTail;
+      if (CCInfo & (1 << bitc::CALL_CPS))
+        TCK = CallInst::TCK_CPS;
       cast<CallInst>(I)->setTailCallKind(TCK);
       cast<CallInst>(I)->setAttributes(PAL);
       if (FMF.any()) {

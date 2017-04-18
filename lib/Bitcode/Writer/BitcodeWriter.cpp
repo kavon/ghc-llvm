@@ -2803,6 +2803,7 @@ void ModuleBitcodeWriter::writeInstruction(const Instruction &I,
                    unsigned(CI.isMustTailCall()) << bitc::CALL_MUSTTAIL |
                    1 << bitc::CALL_EXPLICIT_TYPE |
                    unsigned(CI.isNoTailCall()) << bitc::CALL_NOTAIL |
+                   unsigned(CI.isCPSCall()) << bitc::CALL_CPS |
                    unsigned(Flags != 0) << bitc::CALL_FMF);
     if (Flags != 0)
       Vals.push_back(Flags);

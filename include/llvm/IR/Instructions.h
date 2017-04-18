@@ -1540,31 +1540,35 @@ public:
 
   // Note that 'musttail' implies 'tail'.
   enum TailCallKind { TCK_None = 0, TCK_Tail = 1, TCK_MustTail = 2,
-                      TCK_NoTail = 3 };
+                      TCK_NoTail = 3, TCK_CPS = 4 };
   TailCallKind getTailCallKind() const {
-    return TailCallKind(getSubclassDataFromInstruction() & 3);
+    return TailCallKind(getSubclassDataFromInstruction() & 7);
   }
 
   bool isTailCall() const {
-    unsigned Kind = getSubclassDataFromInstruction() & 3;
+    unsigned Kind = getSubclassDataFromInstruction() & 7;
     return Kind == TCK_Tail || Kind == TCK_MustTail;
   }
 
   bool isMustTailCall() const {
-    return (getSubclassDataFromInstruction() & 3) == TCK_MustTail;
+    return (getSubclassDataFromInstruction() & 7) == TCK_MustTail;
   }
 
   bool isNoTailCall() const {
-    return (getSubclassDataFromInstruction() & 3) == TCK_NoTail;
+    return (getSubclassDataFromInstruction() & 7) == TCK_NoTail;
+  }
+
+   bool isCPSCall() const {
+    return (getSubclassDataFromInstruction() & 7) == TCK_CPS;
   }
 
   void setTailCall(bool isTC = true) {
-    setInstructionSubclassData((getSubclassDataFromInstruction() & ~3) |
+    setInstructionSubclassData((getSubclassDataFromInstruction() & ~7) |
                                unsigned(isTC ? TCK_Tail : TCK_None));
   }
 
   void setTailCallKind(TailCallKind TCK) {
-    setInstructionSubclassData((getSubclassDataFromInstruction() & ~3) |
+    setInstructionSubclassData((getSubclassDataFromInstruction() & ~7) |
                                unsigned(TCK));
   }
 
@@ -1638,8 +1642,8 @@ public:
   void setCallingConv(CallingConv::ID CC) {
     auto ID = static_cast<unsigned>(CC);
     assert(!(ID & ~CallingConv::MaxID) && "Unsupported calling convention");
-    setInstructionSubclassData((getSubclassDataFromInstruction() & 3) |
-                               (ID << 2));
+    setInstructionSubclassData((getSubclassDataFromInstruction() & 7) |
+                               (ID << 3));
   }
 
   /// Return the parameter attributes for this call.
