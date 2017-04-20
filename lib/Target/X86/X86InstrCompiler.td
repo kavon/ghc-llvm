@@ -1084,6 +1084,12 @@ def : Pat<(X86call (i64 tglobaladdr:$dst)),
 def : Pat<(X86call (i64 texternalsym:$dst)),
           (CALL64pcrel32 texternalsym:$dst)>;
 
+// TODO(kavon): we need CPS versions of these more specific calls.
+def : Pat<(X86cps_call (i64 tglobaladdr:$dst)),
+          (CALL64pcrel32 tglobaladdr:$dst)>;
+def : Pat<(X86cps_call (i64 texternalsym:$dst)),
+          (CALL64pcrel32 texternalsym:$dst)>;
+
 // Tailcall stuff. The TCRETURN instructions execute after the epilog, so they
 // can never use callee-saved registers. That is the purpose of the GR64_TC
 // register classes.
@@ -1145,6 +1151,14 @@ def : Pat<(X86call (i32 tglobaladdr:$dst)),
 def : Pat<(X86call (i32 texternalsym:$dst)),
           (CALLpcrel32 texternalsym:$dst)>;
 def : Pat<(X86call (i32 imm:$dst)),
+          (CALLpcrel32 imm:$dst)>, Requires<[CallImmAddr]>;
+
+// TODO(kavon): we need CPS versions of these more specific calls.
+def : Pat<(X86cps_call (i32 tglobaladdr:$dst)),
+          (CALLpcrel32 tglobaladdr:$dst)>;
+def : Pat<(X86cps_call (i32 texternalsym:$dst)),
+          (CALLpcrel32 texternalsym:$dst)>;
+def : Pat<(X86cps_call (i32 imm:$dst)),
           (CALLpcrel32 imm:$dst)>, Requires<[CallImmAddr]>;
 
 // Comparisons.
