@@ -308,6 +308,20 @@ let isCall = 1, Uses = [RSP], SchedRW = [WriteJump] in {
                        "lcall{q}\t{*}$dst", [], IIC_CALL_FAR_MEM>;
 }
 
+// CPS call pseudo-instrs
+// TODO(kavon): right now, only CPSCALLdi64 is used in X86InstrCompiler.td
+let isCall = 1, Uses = [RSP], SchedRW = [WriteJump],
+    isCodeGenOnly = 1, usesCustomInserter = 1 in {
+  def CPSCALLdi64   : PseudoI<(outs),
+                        (ins i64i32imm_pcrel:$dst),
+                        []>;
+  def CPSCALLri64   : PseudoI<(outs),
+                        (ins ptr_rc_tailcall:$dst), []>;
+  let mayLoad = 1 in
+  def CPSCALLmi64   : PseudoI<(outs),
+                        (ins i64mem_TC:$dst), []>;
+}
+
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
     isCodeGenOnly = 1, Uses = [RSP], usesCustomInserter = 1,
     SchedRW = [WriteJump] in {

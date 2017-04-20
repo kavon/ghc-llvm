@@ -26663,6 +26663,10 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
       BB->addLiveIn(BasePtr);
     return BB;
   }
+  case X86::CPSCALLdi64:
+  case X86::CPSCALLri64:
+  case X86::CPSCALLmi64:
+    llvm_unreachable("TODO: implement custom lowering of CPS pseudo-instr.");
   }
 }
 
