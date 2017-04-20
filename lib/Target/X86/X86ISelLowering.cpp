@@ -3856,7 +3856,12 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     return DAG.getNode(X86ISD::TC_RETURN, dl, NodeTys, Ops);
   }
 
-  Chain = DAG.getNode(X86ISD::CALL, dl, NodeTys, Ops);
+  // NOTE(kavon): if we add CPS call marker, change this check
+  unsigned CallOpCode = (CallConv == CallingConv::GHC && !isTailCall)
+                        ? X86ISD::CPS_CALL
+                        : X86ISD::CALL;
+
+  Chain = DAG.getNode(CallOpCode, dl, NodeTys, Ops);
   InFlag = Chain.getValue(1);
 
   // Create the CALLSEQ_END node.
@@ -24239,6 +24244,7 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::FLD:                return "X86ISD::FLD";
   case X86ISD::FST:                return "X86ISD::FST";
   case X86ISD::CALL:               return "X86ISD::CALL";
+  case X86ISD::CPS_CALL:           return "X86ISD::CPS_CALL";
   case X86ISD::RDTSC_DAG:          return "X86ISD::RDTSC_DAG";
   case X86ISD::RDTSCP_DAG:         return "X86ISD::RDTSCP_DAG";
   case X86ISD::RDPMC_DAG:          return "X86ISD::RDPMC_DAG";

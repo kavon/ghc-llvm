@@ -74,6 +74,7 @@ namespace llvm {
       ///     #2 - The second register result value (optional)
       ///
       CALL,
+      CPS_CALL,
 
       /// This operation implements the lowering for readcyclecounter.
       RDTSC_DAG,
