@@ -33,7 +33,7 @@ entry:
 
 define ghccc i64 @addtwo(i64 %x, i64 %y) nounwind {
 entry:
-  ; CHECK:      leaq (%r13,%rbp), %rax
+  ; CHECK:      addq  %rbp, %r13
   %0 = add i64 %x, %y
   ; CHECK-NEXT: ret
   ret i64 %0

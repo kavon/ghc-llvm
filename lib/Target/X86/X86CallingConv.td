@@ -412,6 +412,21 @@ def RetCC_X86_64_HHVM: CallingConv<[
                                  RAX, R10, R11, R13, R14, R15]>>
 ]>;
 
+// X86-64 GHC call and "return" convention.
+def CC_X86_64_GHC : CallingConv<[
+  // Promote i8/i16/i32 arguments to i64.
+  CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
+
+  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, R5, R6, SpLim
+  CCIfType<[i64],
+            CCAssignToReg<[R13, RBP, R12, RBX, R14, RSI, RDI, R8, R9, R15]>>,
+
+  // Pass in STG registers: F1, F2, F3, F4, D1, D2
+  CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
+            CCIfSubtarget<"hasSSE1()",
+            CCAssignToReg<[XMM1, XMM2, XMM3, XMM4, XMM5, XMM6]>>>
+]>;
+
 
 defm X86_32_RegCall :
 	 X86_RegCall_base<RC_X86_32_RegCall>;
@@ -437,6 +452,9 @@ def RetCC_X86_32 : CallingConv<[
 def RetCC_X86_64 : CallingConv<[
   // HiPE uses RetCC_X86_64_HiPE
   CCIfCC<"CallingConv::HiPE", CCDelegateTo<RetCC_X86_64_HiPE>>,
+
+  // Handle GHC "returns"
+  CCIfCC<"CallingConv::GHC", CCDelegateTo<CC_X86_64_GHC>>,
 
   // Handle JavaScript calls.
   CCIfCC<"CallingConv::WebKit_JS", CCDelegateTo<RetCC_X86_64_WebKit_JS>>,
@@ -637,20 +655,6 @@ def CC_X86_Win64_VectorCall : CallingConv<[
   CCDelegateTo<CC_X86_Win64_C>
 ]>;
 
-
-def CC_X86_64_GHC : CallingConv<[
-  // Promote i8/i16/i32 arguments to i64.
-  CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
-
-  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, R5, R6, SpLim
-  CCIfType<[i64],
-            CCAssignToReg<[R13, RBP, R12, RBX, R14, RSI, RDI, R8, R9, R15]>>,
-
-  // Pass in STG registers: F1, F2, F3, F4, D1, D2
-  CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
-            CCIfSubtarget<"hasSSE1()",
-            CCAssignToReg<[XMM1, XMM2, XMM3, XMM4, XMM5, XMM6]>>>
-]>;
 
 def CC_X86_64_HiPE : CallingConv<[
   // Promote i8/i16/i32 arguments to i64.
