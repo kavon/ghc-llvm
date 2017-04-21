@@ -26387,14 +26387,10 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                MachineBasicBlock *MBB) const {
 
   // grab the ret point.
-  MachineBasicBlock *RetPt = NULL;
-  for (MachineBasicBlock *S : MBB->successors()) {
-    assert(RetPt == NULL && "block of a CPS call must have exactly one successor.");
-    RetPt = S;
-  }
+  assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
+  MachineBasicBlock *RetPt = *(MBB->succ_begin());
 
-  // sanity checks
-  assert(RetPt != NULL && "CPS call block has no successor?");
+  // sanity check
   assert(RetPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
     
   RetPt->dump();
