@@ -26383,6 +26383,36 @@ X86TargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
 }
 
 MachineBasicBlock *
+X86TargetLowering::EmitCPSCall(MachineInstr &MI,
+                               MachineBasicBlock *MBB) const {
+
+  // grab the ret point.
+  MachineBasicBlock *RetPt = NULL;
+  for (MachineBasicBlock *S : MBB->successors()) {
+    assert(RetPt == NULL && "block of a CPS call must have exactly one successor.");
+    RetPt = S;
+  }
+
+  // sanity checks
+  assert(RetPt != NULL && "CPS call block has no successor?");
+  assert(RetPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
+    
+  RetPt->dump();
+
+  if (RetPt->pred_size() == 1) {
+    // this is easy, we can blindly sink everything following the CPS call
+  } else {
+    // we need some more complicated handling here to merge things up,
+    // considering the fact that the retpt of the call must have
+    // table info attached to it.
+  }
+
+  // next, inspect the operands of the MI, and replace the MI with a jump.
+
+  llvm_unreachable("TODO: Finish implementing EmitCPSCall");
+}
+
+MachineBasicBlock *
 X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
                                                MachineBasicBlock *BB) const {
   MachineFunction *MF = BB->getParent();
@@ -26666,7 +26696,7 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   case X86::CPSCALLdi64:
   case X86::CPSCALLri64:
   case X86::CPSCALLmi64:
-    llvm_unreachable("TODO: implement custom lowering of CPS pseudo-instr.");
+    return EmitCPSCall(MI, BB);
   }
 }
 
