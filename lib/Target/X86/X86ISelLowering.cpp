@@ -26388,22 +26388,96 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // grab the ret point.
   assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
-  MachineBasicBlock *RetPt = *(MBB->succ_begin());
+  MachineBasicBlock *retPt = *(MBB->succ_begin());
 
   // sanity check
-  assert(RetPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
-    
-  RetPt->dump();
+  assert(retPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
 
-  if (RetPt->pred_size() == 1) {
-    // this is easy, we can blindly sink everything following the CPS call
-  } else {
-    // we need some more complicated handling here to merge things up,
-    // considering the fact that the retpt of the call must have
-    // table info attached to it.
+
+  // *** assumption right now is there's only one pred for each block. ***
+
+  // Find physical registers and add them as live-ins to the retpt.
+  MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
+  while (II != MBB->end()) {
+    // We look for COPY instructions after the CPSCALL that involve a phys reg
+    if (II->isCopy()) {
+      MachineOperand &toArg = II->getOperand(0);
+      MachineOperand &fromArg = II->getOperand(1);
+
+      if (fromArg.isReg() 
+           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg())) { 
+        
+        retPt->addLiveIn(fromArg.getReg());
+      }
+
+      if (toArg.isReg()
+           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg())) {
+        // if a physical register was renamed before the jump to retPt,
+        // we could just keep track of that. we check here to ensure we
+        // haven't missed this case.
+        report_fatal_error("unexpected register rename.");
+      }
+    }
+
+    // NOTE: we could do assumption checking here by ensuring only COPY 
+    // and stack adjust instructions follow the CPS call.
+
+    II++;
   }
 
-  // next, inspect the operands of the MI, and replace the MI with a jump.
+  // Move everything following the CPS call into the return point.
+  retPt->splice(retPt->begin(), MBB,
+                  std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+
+  MBB->dump();
+  retPt->dump();
+
+  // NEXT: add a TCRETURN or tail jump AFTER the CPSCALL, since we want the 
+  // pseudo expander to see it next.
+
+  // THEN: delete the CPSCALL.
+
+
+  // step 1 is fixing up the return point's calling convention.
+  // if (retPt->pred_size() == 1 /* and there isn't a rename in the map */) {
+    // We are the only predecessor, so there is no need for a new block.
+
+    // TODO: it turns out that COPY instructions involving a phys reg
+    // are a hint to use that phys reg and not a requirement.
+    // you must set the live-ins of the block instead of just sinking
+    // the copies.
+
+    
+
+    // TODO: set live-ins of retPt?
+
+  // } else {
+    // we need to create a new block, or look into the CPS map for an existing one
+    // to fix the impedence mismatch with calling conventions.
+
+    // NB: it might be worth ensuring that the only instructions being
+    // relocated are copies when there's more than one cps call returning here.
+  // }
+
+  // next replace the CPSCALLdi64 with a TCRETURNdi64
+
+  // inser the TCRETURN at the end of the block
+
+  // bool isMem = Opcode == X86::TCRETURNmi || Opcode == X86::TCRETURNmi64;
+  // MachineOperand &JumpTarget = MBBI->getOperand(0);
+  // MachineOperand &StackAdjust = MBBI->getOperand(isMem ? 5 : 1);
+
+  // BuildMI(MBB, DL, TII->get(X86::LEA64r), VR)
+  //         .addReg(X86::RIP)
+  //         .addImm(1)
+  //         .addReg(0)
+  //         .addMBB(DispatchBB)
+  //         .addReg(0);
+
+  
+
+  // MBB->dump();
+  // retPt->dump();
 
   llvm_unreachable("TODO: Finish implementing EmitCPSCall");
 }

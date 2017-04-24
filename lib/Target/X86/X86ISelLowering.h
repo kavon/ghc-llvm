@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace llvm {
   class X86Subtarget;
@@ -1085,6 +1086,11 @@ namespace llvm {
 
     /// A list of legal FP immediates.
     std::vector<APFloat> LegalFPImmediates;
+
+    /// Keep track of function entry points that were generated
+    /// when expanding a CPS call pseudo-instr. A CPS calls that
+    /// want to return to a Key will save the address of the Value.
+    DenseMap<MachineBasicBlock*, MachineBasicBlock*> CPSEntryPointMap;
 
     /// Indicate that this x86 target can instruction
     /// select the specified FP immediate natively.
