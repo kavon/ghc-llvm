@@ -26454,16 +26454,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MBB->insert(MI, StackAdjustUp);
 
 
-  // NEXT: add a TCRETURN or tail jump AFTER the CPSCALL, since we want the 
-  // pseudo expander to see it next.
 
-  // CPSCALLdi64 => TCRETURNdi64
-  // op 0 should be: JumpTarget
-  // op 1 should be: StackAdjustImmediate
-
-  // bool isMem = Opcode == X86::TCRETURNmi || Opcode == X86::TCRETURNmi64;
-  // MachineOperand &JumpTarget = MBBI->getOperand(0);
-  // MachineOperand &StackAdjust = MBBI->getOperand(isMem ? 5 : 1);
+  // NEXT: add a TCRETURN after the CPSCALL
 
   // Create a TCRETURN instruction.
   MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
@@ -26478,9 +26470,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // Add the stack adjust immediate (assuming zero right now)
   TCRet->addOperand(MachineOperand::CreateImm(0));
 
-  // then, add implicit reg uses from the CPS call
-  // TODO: if this doesn't properly copy the MOs since you're deleting
-  // MI later, try copyImplicitOps and then delete ones you don't want?
+  // then, add implicit reg uses from the CPS call, which includes a use of RSP
   for (const MachineOperand &MO : MI.implicit_operands()) {
     if (MO.isReg() && MO.isUse())
       TCRet->addOperand(MO);
@@ -26492,7 +26482,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // NB: we _cannot_ remove the edge from MBB -> TCRet, because
   // the code generator will otherwise kill the TCRet block and
   // leave behind a label with no body!!
-
 
   MBB->dump();
   retPt->dump();
