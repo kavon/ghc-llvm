@@ -26473,8 +26473,10 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   TCRet->RemoveOperand(0);
 
   // then, add the jump target
+  TCRet->addOperand(MI.getOperand(0));
 
-  // TODO Next.
+  // Add the stack adjust immediate (assuming zero right now)
+  TCRet->addOperand(MachineOperand::CreateImm(0));
 
   // then, add implicit reg uses from the CPS call
   // TODO: if this doesn't properly copy the MOs since you're deleting
@@ -26484,70 +26486,21 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       TCRet->addOperand(MO);
   }
 
-  TCRet->dump();
+  // finally, delete the CPSCALL
+  MI.eraseFromParent();
 
-  
-
-  // copy over relevant operands from the CPS call to the TCRETURN.
-
-
-          // .addReg(X86::RIP)
-          // .addImm(1)
-          // .addReg(0)
-          // .addMBB(DispatchBB)
-          // .addReg(0);
-
-
-
-
-  // THEN: delete the CPSCALL.
+  // NB: we _cannot_ remove the edge from MBB -> TCRet, because
+  // the code generator will otherwise kill the TCRet block and
+  // leave behind a label with no body!!
 
 
   MBB->dump();
   retPt->dump();
 
-  // step 1 is fixing up the return point's calling convention.
-  // if (retPt->pred_size() == 1 /* and there isn't a rename in the map */) {
-    // We are the only predecessor, so there is no need for a new block.
+  return MBB;
 
-    // TODO: it turns out that COPY instructions involving a phys reg
-    // are a hint to use that phys reg and not a requirement.
-    // you must set the live-ins of the block instead of just sinking
-    // the copies.
 
-    
-
-    // TODO: set live-ins of retPt?
-
-  // } else {
-    // we need to create a new block, or look into the CPS map for an existing one
-    // to fix the impedence mismatch with calling conventions.
-
-    // NB: it might be worth ensuring that the only instructions being
-    // relocated are copies when there's more than one cps call returning here.
-  // }
-
-  // next replace the CPSCALLdi64 with a TCRETURNdi64
-
-  // inser the TCRETURN at the end of the block
-
-  // bool isMem = Opcode == X86::TCRETURNmi || Opcode == X86::TCRETURNmi64;
-  // MachineOperand &JumpTarget = MBBI->getOperand(0);
-  // MachineOperand &StackAdjust = MBBI->getOperand(isMem ? 5 : 1);
-
-  // BuildMI(MBB, DL, TII->get(X86::LEA64r), VR)
-  //         .addReg(X86::RIP)
-  //         .addImm(1)
-  //         .addReg(0)
-  //         .addMBB(DispatchBB)
-  //         .addReg(0);
-
-  
-
-  // MBB->dump();
-  // retPt->dump();
-
-  llvm_unreachable("TODO: Finish implementing EmitCPSCall");
+  // llvm_unreachable("TODO: Finish implementing EmitCPSCall");
 }
 
 MachineBasicBlock *
