@@ -59,6 +59,7 @@
 #include <bitset>
 #include <cctype>
 #include <numeric>
+#include <iostream> // TODO(kavon): remove this
 using namespace llvm;
 
 #define DEBUG_TYPE "x86-isel"
@@ -26393,6 +26394,11 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // sanity check
   assert(retPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
 
+  MachineFunction *MF = MBB->getParent();
+  const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
+  const TargetInstrInfo *TII = STI.getInstrInfo();
+  DebugLoc DL; // debug loc is irrelevant
+
 
   // *** assumption right now is there's only one pred for each block. ***
 
@@ -26437,17 +26443,16 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   assert(StackAdjustUp && "did not find a stack adjust?");
 
+
   // Move the COPY instructions after the CPS call into the return point.
-  retPt->splice(retPt->begin(), MBB,
-                  std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  retPt->splice(retPt->begin(), MBB, 
+      std::next(MachineBasicBlock::iterator(MI)), MBB->end());
 
   // insert the stack adjust before the CPS call
   MachineOperand &SP_def = StackAdjustUp->getOperand(2);
   SP_def.setIsDead(false); // SP is not dead anymore
   MBB->insert(MI, StackAdjustUp);
 
-  MBB->dump();
-  retPt->dump();
 
   // NEXT: add a TCRETURN or tail jump AFTER the CPSCALL, since we want the 
   // pseudo expander to see it next.
@@ -26460,18 +26465,46 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // MachineOperand &JumpTarget = MBBI->getOperand(0);
   // MachineOperand &StackAdjust = MBBI->getOperand(isMem ? 5 : 1);
 
-  // BuildMI(MBB, DL, TII->get(X86::LEA64r), VR)
-  //         .addReg(X86::RIP)
-  //         .addImm(1)
-  //         .addReg(0)
-  //         .addMBB(DispatchBB)
-  //         .addReg(0);
+  // Create a TCRETURN instruction.
+  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
+  MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
+
+  // TCRet starts with RSP as a imp-use in operand 0, so we remove it.
+  TCRet->RemoveOperand(0);
+
+  // then, add the jump target
+
+  // TODO Next.
+
+  // then, add implicit reg uses from the CPS call
+  // TODO: if this doesn't properly copy the MOs since you're deleting
+  // MI later, try copyImplicitOps and then delete ones you don't want?
+  for (const MachineOperand &MO : MI.implicit_operands()) {
+    if (MO.isReg() && MO.isUse())
+      TCRet->addOperand(MO);
+  }
+
+  TCRet->dump();
+
+  
+
+  // copy over relevant operands from the CPS call to the TCRETURN.
+
+
+          // .addReg(X86::RIP)
+          // .addImm(1)
+          // .addReg(0)
+          // .addMBB(DispatchBB)
+          // .addReg(0);
 
 
 
 
   // THEN: delete the CPSCALL.
 
+
+  MBB->dump();
+  retPt->dump();
 
   // step 1 is fixing up the return point's calling convention.
   // if (retPt->pred_size() == 1 /* and there isn't a rename in the map */) {
