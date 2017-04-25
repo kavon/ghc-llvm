@@ -26397,43 +26397,78 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // *** assumption right now is there's only one pred for each block. ***
 
   // Find physical registers and add them as live-ins to the retpt.
+  // We also look for the stack adjustment and pull it out of MBB.
   MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
+  MachineInstr *StackAdjustUp = NULL;
   while (II != MBB->end()) {
+    bool foundStackAdjust = false;
     // We look for COPY instructions after the CPSCALL that involve a phys reg
     if (II->isCopy()) {
       MachineOperand &toArg = II->getOperand(0);
       MachineOperand &fromArg = II->getOperand(1);
 
       if (fromArg.isReg() 
-           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg())) { 
-        
+           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg()))
+
         retPt->addLiveIn(fromArg.getReg());
-      }
+      
 
       if (toArg.isReg()
-           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg())) {
+           && TargetRegisterInfo::isPhysicalRegister(toArg.getReg()))
         // if a physical register was renamed before the jump to retPt,
         // we could just keep track of that. we check here to ensure we
         // haven't missed this case.
-        report_fatal_error("unexpected register rename.");
-      }
+        report_fatal_error("unexpected phys register overwrite.");
+      
+    } else if (II->getOpcode() == X86::ADJCALLSTACKUP64) {
+      assert(!foundStackAdjust && "two stack adjusts?");
+      foundStackAdjust = true;
+    } else {
+      II->dump();
+      report_fatal_error("unexpected instruction following a CPS call");
     }
 
-    // NOTE: we could do assumption checking here by ensuring only COPY 
-    // and stack adjust instructions follow the CPS call.
+    MachineBasicBlock::iterator next = std::next(II);
+    if (foundStackAdjust)
+      StackAdjustUp = II->removeFromParent();
 
-    II++;
+    II = next;
   }
 
-  // Move everything following the CPS call into the return point.
+  assert(StackAdjustUp && "did not find a stack adjust?");
+
+  // Move the COPY instructions after the CPS call into the return point.
   retPt->splice(retPt->begin(), MBB,
                   std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+
+  // insert the stack adjust before the CPS call
+  MachineOperand &SP_def = StackAdjustUp->getOperand(2);
+  SP_def.setIsDead(false); // SP is not dead anymore
+  MBB->insert(MI, StackAdjustUp);
 
   MBB->dump();
   retPt->dump();
 
   // NEXT: add a TCRETURN or tail jump AFTER the CPSCALL, since we want the 
   // pseudo expander to see it next.
+
+  // CPSCALLdi64 => TCRETURNdi64
+  // op 0 should be: JumpTarget
+  // op 1 should be: StackAdjustImmediate
+
+  // bool isMem = Opcode == X86::TCRETURNmi || Opcode == X86::TCRETURNmi64;
+  // MachineOperand &JumpTarget = MBBI->getOperand(0);
+  // MachineOperand &StackAdjust = MBBI->getOperand(isMem ? 5 : 1);
+
+  // BuildMI(MBB, DL, TII->get(X86::LEA64r), VR)
+  //         .addReg(X86::RIP)
+  //         .addImm(1)
+  //         .addReg(0)
+  //         .addMBB(DispatchBB)
+  //         .addReg(0);
+
+
+
 
   // THEN: delete the CPSCALL.
 
