@@ -1087,11 +1087,6 @@ namespace llvm {
     /// A list of legal FP immediates.
     std::vector<APFloat> LegalFPImmediates;
 
-    /// Keep track of function entry points that were generated
-    /// when expanding a CPS call pseudo-instr. A CPS calls that
-    /// want to return to a Key will save the address of the Value.
-    DenseMap<MachineBasicBlock*, MachineBasicBlock*> CPSEntryPointMap;
-
     /// Indicate that this x86 target can instruction
     /// select the specified FP immediate natively.
     void addLegalFPImmediate(const APFloat& Imm) {

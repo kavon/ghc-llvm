@@ -26387,12 +26387,9 @@ MachineBasicBlock *
 X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                MachineBasicBlock *MBB) const {
 
-  // grab the ret point.
-  assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
-  MachineBasicBlock *retPt = *(MBB->succ_begin());
-
-  // sanity check
-  assert(retPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
+  // Keep track of return points that were generated
+  // when expanding a CPS call pseudo-instr.
+  static DenseMap<MachineBasicBlock *, MachineBasicBlock *> ReturnPointMap;
 
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
@@ -26400,34 +26397,45 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   DebugLoc DL; // debug loc is irrelevant
 
 
-  // *** assumption right now is there's only one pred for each block. ***
+  //////////
+  // Scan the instructions following the MI, collecting
+  // information about register copies & physical registers.
+  // We also pull out the stack adjustment instruction
+  // and do assumption checking.
+  //
 
-  // Find physical registers and add them as live-ins to the retpt.
-  // We also look for the stack adjustment and pull it out of MBB.
-  MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
+  // reg1 -> reg2 iff reg1 = COPY reg2 and reg1 is virtual
+  SmallDenseMap<unsigned, unsigned, 32> RegMap; 
+  std::vector<MCPhysReg> PhysRegs;
   MachineInstr *StackAdjustUp = NULL;
+
+  MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
   while (II != MBB->end()) {
     bool foundStackAdjust = false;
-    // We look for COPY instructions after the CPSCALL that involve a phys reg
+
     if (II->isCopy()) {
       MachineOperand &toArg = II->getOperand(0);
       MachineOperand &fromArg = II->getOperand(1);
 
-      if (fromArg.isReg() 
-           && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg()))
+      if (fromArg.isReg() && toArg.isReg()) {
+        unsigned toReg = toArg.getReg();
+        unsigned fromReg = fromArg.getReg();
 
-        retPt->addLiveIn(fromArg.getReg());
-      
+        if (TargetRegisterInfo::isPhysicalRegister(toReg))
+          report_fatal_error("unexpected phys register overwrite");
 
-      if (toArg.isReg()
-           && TargetRegisterInfo::isPhysicalRegister(toArg.getReg()))
-        // if a physical register was renamed before the jump to retPt,
-        // we could just keep track of that. we check here to ensure we
-        // haven't missed this case.
-        report_fatal_error("unexpected phys register overwrite.");
+        if (TargetRegisterInfo::isPhysicalRegister(fromReg))
+          PhysRegs.push_back(fromReg);
+
+        RegMap[toReg] = fromReg;
+
+      } else {
+        II->dump();
+        report_fatal_error("unexpected COPY involving a non-reg operand");        
+      }
       
     } else if (II->getOpcode() == X86::ADJCALLSTACKUP64) {
-      assert(!foundStackAdjust && "two stack adjusts?");
+      assert(StackAdjustUp == NULL && "found multiple stack adjusts?");
       foundStackAdjust = true;
     } else {
       II->dump();
@@ -26441,12 +26449,127 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     II = next;
   }
 
-  assert(StackAdjustUp && "did not find a stack adjust?");
+  //////////
+  // stick the stack-adjust-up instr that we removed
+  // before the CPSCALL
+  //
+  assert(StackAdjustUp != NULL && "did not find a stack adjust?");
+
+  MachineOperand &SP_def = StackAdjustUp->getOperand(2);
+  SP_def.setIsDead(false); // SP is not dead anymore
+  MBB->insert(MI, StackAdjustUp);
+  
+
+  //////////
+  // grab the ret point and check whether this is the first
+  // time a CPSCALL targeting this ret point was expanded.
+
+  assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
+  MachineBasicBlock *retPt = *(MBB->succ_begin());
+
+  MBB->dump();
+  retPt->dump();
+
+  llvm_unreachable("pausing here");
+
+/*
+  bool FirstEncounter = ReturnPointMap.count(retPt) == 0;
+  MachineBasicBlock *newSucc;
+
+  if (FirstEncounter) {
+    // retPt has not been encountered before, so
+    // we need to create a new return point.
+    newSucc = MF->CreateMachineBasicBlock();
+
+    // move copies and live-in info into newSucc
+
+
+    
+
+    ReturnPointMap[retPt] = newSucc;
+  
+  } else {
+    // there is already a return point.
+    // remove our vars from the phis in retPt
+    newSucc = ReturnPointMap[retPt];
+  }
+  
+  // change our successor edge to point to newSucc,
+  // and if the block address of retPt was used in 
+  // this block, replace it with the address of newSucc.
+  MBB->ReplaceUsesOfBlockWith(retPt, newSucc);
+*/
+
+
+
+
+
+
+
+
+
+
+  // sanity check
+  // assert(retPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
+
+  
+
+
+  // *** assumption right now is there's only one pred for each block. ***
+
+  // Find physical registers and add them as live-ins to the retpt.
+  // We also look for the stack adjustment and pull it out of MBB.
+  // MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
+  // MachineInstr *StackAdjustUp = NULL;
+  // while (II != MBB->end()) {
+  //   bool foundStackAdjust = false;
+  //   // We look for COPY instructions after the CPSCALL that involve a phys reg
+  //   if (II->isCopy()) {
+  //     MachineOperand &toArg = II->getOperand(0);
+  //     MachineOperand &fromArg = II->getOperand(1);
+
+  //     if (fromArg.isReg() 
+  //          && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg()))
+
+  //       retPt->addLiveIn(fromArg.getReg());
+      
+
+  //     if (toArg.isReg()
+  //          && TargetRegisterInfo::isPhysicalRegister(toArg.getReg()))
+  //       // if a physical register was renamed before the jump to retPt,
+  //       // we could just keep track of that. we check here to ensure we
+  //       // haven't missed this case.
+  //       report_fatal_error("unexpected phys register overwrite.");
+      
+  //   } else if (II->getOpcode() == X86::ADJCALLSTACKUP64) {
+  //     assert(!foundStackAdjust && "two stack adjusts?");
+  //     foundStackAdjust = true;
+  //   } else {
+  //     II->dump();
+  //     report_fatal_error("unexpected instruction following a CPS call");
+  //   }
+
+  //   MachineBasicBlock::iterator next = std::next(II);
+  //   if (foundStackAdjust)
+  //     StackAdjustUp = II->removeFromParent();
+
+  //   II = next;
+  // }
+
+  // assert(StackAdjustUp && "did not find a stack adjust?");
 
 
   // Move the COPY instructions after the CPS call into the return point.
-  retPt->splice(retPt->begin(), MBB, 
-      std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  // retPt->splice(retPt->begin(), MBB, 
+  //     std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+
+
+
+
+  //////////////////////////////////////////////
+  // THE BELOW IS GOOD STUFF
+  //////////////////////////////////////////////
+  /*
 
   // insert the stack adjust before the CPS call
   MachineOperand &SP_def = StackAdjustUp->getOperand(2);
@@ -26487,6 +26610,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   retPt->dump();
 
   return MBB;
+  */
 
 
   // llvm_unreachable("TODO: Finish implementing EmitCPSCall");
