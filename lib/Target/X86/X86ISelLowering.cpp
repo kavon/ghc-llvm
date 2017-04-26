@@ -26498,6 +26498,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // move all instructions to newRet
     newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
 
+    // TODO: what if retPt has a CPS call? its successor would be wrong.
+    // I think we need to manually implement the below function.
+
     // move all successors to newRet
     newRet->transferSuccessorsAndUpdatePHIs(retPt);
 
@@ -26519,6 +26522,48 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       }
       pred->ReplaceUsesOfBlockWith(retPt, newRet);
     }
+
+    // now that everything has been removed from retPt,
+    // we reinitialize it with new contents
+
+    for (MCPhysReg pr : PhysRegs) {
+      retPt->addLiveIn(pr);
+    }
+
+    // update phis in newRet, 
+    // adding phys -> virt COPYs to retPt
+    for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
+          End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
+
+      for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
+        MachineOperand &BBO = I->getOperand(i);
+        if (BBO.getMBB() == MBB) {
+          MachineOperand &VRegO = I->getOperand(i-1);
+          
+          // find the physical register corresponding to VRegO
+          unsigned VReg = VRegO.getReg();
+          unsigned PReg = VReg;
+          while (RegMap.count(PReg) == 1) {
+            PReg = RegMap[PReg];
+          }
+
+          if (TargetRegisterInfo::isVirtualRegister(PReg))
+            report_fatal_error("could not find phys reg!");
+
+          // emit a VReg = COPY PReg instr in retPt
+          // BuildMI (...)
+
+          // change the BBO to point to retPt
+          BBO.setMBB(retPt);
+
+        }
+      }
+    }
+
+    // set the only successor of retPt to be newRet
+
+
+    
     
 
     // newRet->dump();
@@ -26526,14 +26571,14 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
     MF->dump();
 
-  }
-/*
-  else {
+  } /* else {
     // there is already a return point.
-    // remove our vars from the phis in retPt
-    newSucc = ReturnPointMap[retPt];
+    // remove our vars from the phis in retPt, ensuring that
+    // the same phys reg used by retPt is what we used to return.
   }
 */
+
+  // delete everything after the CPSCALL and turn it into a TCReturn
 
 llvm_unreachable("pausing here");
 
