@@ -26394,6 +26394,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
   const TargetInstrInfo *TII = STI.getInstrInfo();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
   DebugLoc DL; // debug loc is irrelevant
 
 
@@ -26410,7 +26411,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MachineInstr *StackAdjustUp = NULL;
 
   MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
-  while (II != MBB->end()) {
+  while (II != MBB->end() && !II->isTerminator()) {
     bool foundStackAdjust = false;
 
     if (II->isCopy()) {
@@ -26424,8 +26425,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
         if (TargetRegisterInfo::isPhysicalRegister(toReg))
           report_fatal_error("unexpected phys register overwrite");
 
-        if (TargetRegisterInfo::isPhysicalRegister(fromReg))
+        if (TargetRegisterInfo::isPhysicalRegister(fromReg)) {
           PhysRegs.push_back(fromReg);
+        }
 
         RegMap[toReg] = fromReg;
 
@@ -26467,38 +26469,81 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
   MachineBasicBlock *retPt = *(MBB->succ_begin());
 
-  MBB->dump();
-  retPt->dump();
-
-  llvm_unreachable("pausing here");
-
-/*
   bool FirstEncounter = ReturnPointMap.count(retPt) == 0;
-  MachineBasicBlock *newSucc;
 
-  if (FirstEncounter) {
-    // retPt has not been encountered before, so
-    // we need to create a new return point.
-    newSucc = MF->CreateMachineBasicBlock();
+  if (FirstEncounter && retPt->pred_size() == 1) {
+    // there's no need for a new block, we can
+    // just splice the COPY instructions onto
+    // the retPt and add live-ins
+    
+    retPt->splice(retPt->begin(), MBB, 
+      std::next(MachineBasicBlock::iterator(MI)), MBB->end());
 
-    // move copies and live-in info into newSucc
+    for (auto pReg : PhysRegs)
+      retPt->addLiveIn(pReg);
+  
+  } else if (FirstEncounter) {
+    // retPt has more than 1 pred. 
 
+    // Copy everything in retPt over to a new block,
+    // which will be the target of local branches.
+    // We do this because the name of the retpt
+    // block whose address was taken must be preserved,
+    // and we do not want to constrain local branches
+    // to the retpt with a fixed register convention.
 
+    MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
+    MF->insert(std::next(MachineFunction::iterator(retPt)), newRet);
+
+    // move all instructions to newRet
+    newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
+
+    // move all successors to newRet
+    newRet->transferSuccessorsAndUpdatePHIs(retPt);
+
+    // update predecessors of retPt to use newRet instead, 
+    // only if they are a local branch to retPt.
+    for (MachineBasicBlock *pred : retPt->predecessors()) {
+      if (pred->succ_size() == 1) {
+        // this block might have a CPSCALL, so we check.
+        bool HasCPSCall = false;
+        MachineBasicBlock::instr_iterator I = pred->instr_end();
+        while (!HasCPSCall && I != pred->instr_begin()) {
+          --I;
+          if (I->getOpcode() == X86::CPSCALLdi64)
+            HasCPSCall = true;
+        }
+
+        if (HasCPSCall)
+          continue;
+      }
+      pred->ReplaceUsesOfBlockWith(retPt, newRet);
+    }
     
 
-    ReturnPointMap[retPt] = newSucc;
-  
-  } else {
+    // newRet->dump();
+    // retPt->dump();
+
+    MF->dump();
+
+  }
+/*
+  else {
     // there is already a return point.
     // remove our vars from the phis in retPt
     newSucc = ReturnPointMap[retPt];
   }
-  
-  // change our successor edge to point to newSucc,
-  // and if the block address of retPt was used in 
-  // this block, replace it with the address of newSucc.
-  MBB->ReplaceUsesOfBlockWith(retPt, newSucc);
 */
+
+llvm_unreachable("pausing here");
+
+
+
+
+
+  
+  
+
 
 
 
@@ -26560,8 +26605,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
 
   // Move the COPY instructions after the CPS call into the return point.
-  // retPt->splice(retPt->begin(), MBB, 
-  //     std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  // 
 
 
 
