@@ -26481,6 +26481,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
     for (auto pReg : PhysRegs)
       retPt->addLiveIn(pReg);
+
+    // mark that retPt is a landing-pad to satisfy the verifier
+    retPt->setIsEHPad(true);
   
   } else if (FirstEncounter) {
     // retPt has more than 1 pred. 
@@ -26532,6 +26535,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       retPt->addLiveIn(pr);
     }
 
+    // mark that retPt is a landing-pad to satisfy the verifier
+    retPt->setIsEHPad(true);
+
     // replace uses of MBB in the phis of newRet with retPt instead,
     // while adding fresh phys -> virt COPYs to retPt
     for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
@@ -26566,9 +26572,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // set the only successor of retPt to be newRet and emit a jump
     BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
     retPt->addSuccessor(newRet);
-
-    // mark that retPt is a landing-pad to satisfy the verifier
-    retPt->setIsEHPad(true);
 
     assert(retPt->succ_size() == 1 && "should only be one successor now");
 
