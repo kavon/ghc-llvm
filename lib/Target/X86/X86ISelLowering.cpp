@@ -26498,10 +26498,12 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // move all instructions to newRet
     newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
 
-    // TODO: what if retPt has a CPS call? its successor would be wrong.
-    // I think we need to manually implement the below function.
+    // move all successors to newRet. 
 
-    // move all successors to newRet
+    // NOTE: we assume retPt does not contain a CPS call
+    // that returns to retPt, because that would be a 
+    // silly infinite loop. If that _is_ possible, you'll
+    // want to reimplement the below function manually.
     newRet->transferSuccessorsAndUpdatePHIs(retPt);
 
     // update predecessors of retPt to use newRet instead, 
@@ -26530,8 +26532,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       retPt->addLiveIn(pr);
     }
 
-    // update phis in newRet, 
-    // adding phys -> virt COPYs to retPt
+    // replace uses of MBB in the phis of newRet with retPt instead,
+    // while adding fresh phys -> virt COPYs to retPt
     for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
           End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
 
@@ -26567,12 +26569,36 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
     assert(retPt->succ_size() == 1 && "should only be one successor now");
 
-  } /* else {
-    // there is already a return point.
-    // remove our vars from the phis in retPt, ensuring that
-    // the same phys reg used by retPt is what we used to return.
+    ReturnPointMap[retPt] = newRet;
+
+  } else {
+    // there is already a new return point.
+
+    MachineBasicBlock* newRet = ReturnPointMap[retPt];
+
+    // remove our vars from the phis in newRet.
+    unsigned varsRemoved = 0;
+    for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
+          End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
+
+      unsigned operandToDrop = 0; // i = block, i-1 = var
+      for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
+        MachineOperand &BBO = I->getOperand(i);
+        if (BBO.getMBB() == MBB) {
+          operandToDrop = i;
+          break;
+        }
+      }
+      assert(operandToDrop != 0 && "did not find our phi operand?");
+      I->RemoveOperand(operandToDrop); // block
+      I->RemoveOperand(operandToDrop-1); // var
+      varsRemoved++;
+    }
+
+    assert(varsRemoved == PhysRegs.size() && "return point has an arity mismatch!");
+    // NOTE: we otherwise assume that, for each phi node of the original IR, 
+    // the same physical register is the source of each returned value of a CPSCALL.
   }
-*/
 
   // delete all instructions following the CPS call
   MBB->erase(std::next(MachineBasicBlock::iterator(MI)), MBB->end());
@@ -26603,9 +26629,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // llvm_unreachable("pausing here");
 
-  // NB: we _cannot_ remove the edge from MBB -> TCRet, because
-  // the code generator will otherwise kill the TCRet block and
-  // leave behind a label with no body!!
+  // NB: we should not remove the edge from MBB -> retPt, because
+  // the code generator will otherwise kill the retPt block if
+  // it has no predecessors, leaving behind a label to nothing.
 
   return MBB;
 
