@@ -26550,8 +26550,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
           if (TargetRegisterInfo::isVirtualRegister(PReg))
             report_fatal_error("could not find phys reg!");
 
-          // emit a VReg = COPY PReg instr in retPt
-          // BuildMI (...)
+          // append a  VReg = COPY PReg  instr to retPt
+          BuildMI(retPt, DL, TII->get(TargetOpcode::COPY), VReg)
+            .addReg(PReg, RegState::Kill);
 
           // change the BBO to point to retPt
           BBO.setMBB(retPt);
@@ -26560,16 +26561,11 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       }
     }
 
-    // set the only successor of retPt to be newRet
+    // set the only successor of retPt to be newRet and emit a jump
+    BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
+    retPt->addSuccessor(newRet);
 
-
-    
-    
-
-    // newRet->dump();
-    // retPt->dump();
-
-    MF->dump();
+    assert(retPt->succ_size() == 1 && "should only be one successor now");
 
   } /* else {
     // there is already a return point.
@@ -26578,11 +26574,40 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   }
 */
 
-  // delete everything after the CPSCALL and turn it into a TCReturn
+  // delete all instructions following the CPS call
+  MBB->erase(std::next(MachineBasicBlock::iterator(MI)), MBB->end());
 
-llvm_unreachable("pausing here");
+  // Create a TCRETURN instruction.
+  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
+  MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
 
+  // TCRet starts with RSP as a imp-use in operand 0, so we remove it.
+  TCRet->RemoveOperand(0);
 
+  // then, add the jump target
+  TCRet->addOperand(MI.getOperand(0));
+
+  // Add the stack adjust immediate (assuming zero right now)
+  TCRet->addOperand(MachineOperand::CreateImm(0));
+
+  // then, add implicit reg uses from the CPS call, which includes a use of RSP
+  for (const MachineOperand &MO : MI.implicit_operands()) {
+    if (MO.isReg() && MO.isUse())
+      TCRet->addOperand(MO);
+  }
+
+  // finally, delete the CPSCALL
+  MI.eraseFromParent();
+
+  MF->dump();
+
+  // llvm_unreachable("pausing here");
+
+  // NB: we _cannot_ remove the edge from MBB -> TCRet, because
+  // the code generator will otherwise kill the TCRet block and
+  // leave behind a label with no body!!
+
+  return MBB;
 
 
 
@@ -26592,6 +26617,7 @@ llvm_unreachable("pausing here");
 
 
 
+// llvm_unreachable("pausing here");
 
 
 
