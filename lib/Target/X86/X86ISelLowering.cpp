@@ -26496,7 +26496,11 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // to the retpt with a fixed register convention.
 
     MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
-    MF->insert(std::next(MachineFunction::iterator(retPt)), newRet);
+
+    // TODO(kavon): we insert it after this MBB so ExpandISelPseudos
+    // processes it. Otherwise it's probably better to add it before
+    // retPt instead.
+    MF->insert(std::next(MachineFunction::iterator(MBB)), newRet);
 
     // move all instructions to newRet
     newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
@@ -26635,6 +26639,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // finally, delete the CPSCALL
   MI.eraseFromParent();
 
+  // TODO(kavon): should newRet be returned when first encountering retpt?
+  // we can add a "returnedMBB" local to determine which one to return so
+  // that expandISelPseudos hits every block. 
   return MBB;
 
 }
