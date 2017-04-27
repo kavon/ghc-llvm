@@ -26469,6 +26469,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
   MachineBasicBlock *retPt = *(MBB->succ_begin());
 
+  assert(retPt->hasAddressTaken() && "succ is likely wrong!");
+
   bool FirstEncounter = ReturnPointMap.count(retPt) == 0;
 
   if (FirstEncounter && retPt->pred_size() == 1) {
