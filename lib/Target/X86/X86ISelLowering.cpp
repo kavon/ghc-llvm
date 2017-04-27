@@ -26526,7 +26526,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     }
 
     // now that everything has been removed from retPt,
-    // we reinitialize it with new contents
+    // we reinitialize it
 
     for (MCPhysReg pr : PhysRegs) {
       retPt->addLiveIn(pr);
@@ -26566,6 +26566,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // set the only successor of retPt to be newRet and emit a jump
     BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
     retPt->addSuccessor(newRet);
+
+    // mark that retPt is a landing-pad to satisfy the verifier
+    retPt->setIsEHPad(true);
 
     assert(retPt->succ_size() == 1 && "should only be one successor now");
 
@@ -26622,139 +26625,15 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       TCRet->addOperand(MO);
   }
 
-  // finally, delete the CPSCALL
-  MI.eraseFromParent();
-
-  MF->dump();
-
-  // llvm_unreachable("pausing here");
-
-  // NB: we should not remove the edge from MBB -> retPt, because
-  // the code generator will otherwise kill the retPt block if
-  // it has no predecessors, leaving behind a label to nothing.
-
-  return MBB;
-
-
-
-  
-  
-
-
-
-
-// llvm_unreachable("pausing here");
-
-
-
-
-
-
-
-  // sanity check
-  // assert(retPt->hasAddressTaken() && "addr of return point for CPS call was not taken?");
-
-  
-
-
-  // *** assumption right now is there's only one pred for each block. ***
-
-  // Find physical registers and add them as live-ins to the retpt.
-  // We also look for the stack adjustment and pull it out of MBB.
-  // MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
-  // MachineInstr *StackAdjustUp = NULL;
-  // while (II != MBB->end()) {
-  //   bool foundStackAdjust = false;
-  //   // We look for COPY instructions after the CPSCALL that involve a phys reg
-  //   if (II->isCopy()) {
-  //     MachineOperand &toArg = II->getOperand(0);
-  //     MachineOperand &fromArg = II->getOperand(1);
-
-  //     if (fromArg.isReg() 
-  //          && TargetRegisterInfo::isPhysicalRegister(fromArg.getReg()))
-
-  //       retPt->addLiveIn(fromArg.getReg());
-      
-
-  //     if (toArg.isReg()
-  //          && TargetRegisterInfo::isPhysicalRegister(toArg.getReg()))
-  //       // if a physical register was renamed before the jump to retPt,
-  //       // we could just keep track of that. we check here to ensure we
-  //       // haven't missed this case.
-  //       report_fatal_error("unexpected phys register overwrite.");
-      
-  //   } else if (II->getOpcode() == X86::ADJCALLSTACKUP64) {
-  //     assert(!foundStackAdjust && "two stack adjusts?");
-  //     foundStackAdjust = true;
-  //   } else {
-  //     II->dump();
-  //     report_fatal_error("unexpected instruction following a CPS call");
-  //   }
-
-  //   MachineBasicBlock::iterator next = std::next(II);
-  //   if (foundStackAdjust)
-  //     StackAdjustUp = II->removeFromParent();
-
-  //   II = next;
-  // }
-
-  // assert(StackAdjustUp && "did not find a stack adjust?");
-
-
-  // Move the COPY instructions after the CPS call into the return point.
-  // 
-
-
-
-
-  //////////////////////////////////////////////
-  // THE BELOW IS GOOD STUFF
-  //////////////////////////////////////////////
-  /*
-
-  // insert the stack adjust before the CPS call
-  MachineOperand &SP_def = StackAdjustUp->getOperand(2);
-  SP_def.setIsDead(false); // SP is not dead anymore
-  MBB->insert(MI, StackAdjustUp);
-
-
-
-  // NEXT: add a TCRETURN after the CPSCALL
-
-  // Create a TCRETURN instruction.
-  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
-  MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
-
-  // TCRet starts with RSP as a imp-use in operand 0, so we remove it.
-  TCRet->RemoveOperand(0);
-
-  // then, add the jump target
-  TCRet->addOperand(MI.getOperand(0));
-
-  // Add the stack adjust immediate (assuming zero right now)
-  TCRet->addOperand(MachineOperand::CreateImm(0));
-
-  // then, add implicit reg uses from the CPS call, which includes a use of RSP
-  for (const MachineOperand &MO : MI.implicit_operands()) {
-    if (MO.isReg() && MO.isUse())
-      TCRet->addOperand(MO);
-  }
+  // NOTE: we should not remove retPt as a successor of MBB,
+  // because if retPt no longer has any predecessors, its
+  // contents will be deleted!
 
   // finally, delete the CPSCALL
   MI.eraseFromParent();
 
-  // NB: we _cannot_ remove the edge from MBB -> TCRet, because
-  // the code generator will otherwise kill the TCRet block and
-  // leave behind a label with no body!!
-
-  MBB->dump();
-  retPt->dump();
-
   return MBB;
-  */
 
-
-  // llvm_unreachable("TODO: Finish implementing EmitCPSCall");
 }
 
 MachineBasicBlock *
