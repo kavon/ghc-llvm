@@ -26483,13 +26483,13 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       retPt->splice(retPt->begin(), MBB, 
         std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
 
-      for (auto pReg : PhysRegs)
-        retPt->addLiveIn(pReg);
-
-      // mark that retPt is a landing-pad to satisfy the verifier
-      retPt->setIsEHPad(true);
     } else {
       // retPt has more than 1 pred. 
+
+      // TODO(kavon): is the whole moving everything to a new
+      // block needed anymore? we can just make the newRet block
+      // with the COPYs and update phis in retPt, since
+      // we're now retrieving the GC name from metadata.
 
       // Copy everything in retPt over to a new block,
       // which will be the target of local branches.
@@ -26505,7 +26505,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       // retPt instead.
       MF->insert(std::next(MachineFunction::iterator(MBB)), newRet);
 
-      // move all instructions to newRet
+      // move _all_ instructions to newRet
       newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
 
       // move all successors to newRet. 
@@ -26536,14 +26536,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       }
 
       // now that everything has been removed from retPt,
-      // we reinitialize it
-
-      for (MCPhysReg pr : PhysRegs) {
-        retPt->addLiveIn(pr);
-      }
-
-      // mark that retPt is a landing-pad to satisfy the verifier
-      retPt->setIsEHPad(true);
+      // we reinitialize it with instructions
 
       // replace uses of MBB in the phis of newRet with retPt instead,
       // while adding fresh phys -> virt COPYs to retPt
@@ -26580,20 +26573,29 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
       retPt->addSuccessor(newRet);
 
-      // stick a label at the top of the retpt as an ASM comment for the mangler
-      const Twine t = Twine("myLabel");
-      MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
-      BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
-
-      // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
-      // optionally accept an MCSymbol so that we don't have to emit this
-      // silly extra label.
-
       assert(retPt->succ_size() == 1 && "should only be one successor now");
 
       ReturnPointMap[retPt] = newRet;
-
     }
+
+    // whether there is 1 or more preds, if it's the first encounter,
+    // we also perform the following actions on retpt.
+
+    // set the live-ins on retPt
+    for (auto pReg : PhysRegs)
+      retPt->addLiveIn(pReg);
+
+    // mark that retPt is a landing-pad to satisfy the verifier
+    retPt->setIsEHPad(true);
+
+    // stick a label at the top of the retpt as an ASM comment for the mangler
+    const Twine t = Twine("myLabel"); // TODO(kavon): get name from metadata
+    MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
+    BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+
+    // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
+    // optionally accept an MCSymbol so that we don't have to emit this
+    // silly extra label.
 
   } else {
     // there is already a new return point.
