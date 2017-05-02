@@ -26473,125 +26473,127 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   bool FirstEncounter = ReturnPointMap.count(retPt) == 0;
 
-  if (FirstEncounter && retPt->pred_size() == 1) {
-    // there's no need for a new block, we can
-    // just splice the COPY instructions onto
-    // the retPt and add live-ins
-    
-    // move the copies to the retpt
-    retPt->splice(retPt->begin(), MBB, 
-      std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
+  if (FirstEncounter) {
+    if(retPt->pred_size() == 1) {
+      // there's no need for a new block, we can
+      // just splice the COPY instructions onto
+      // the retPt and add live-ins
+      
+      // move the copies to the retpt
+      retPt->splice(retPt->begin(), MBB, 
+        std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
 
-    for (auto pReg : PhysRegs)
-      retPt->addLiveIn(pReg);
+      for (auto pReg : PhysRegs)
+        retPt->addLiveIn(pReg);
 
-    // mark that retPt is a landing-pad to satisfy the verifier
-    retPt->setIsEHPad(true);
-  
-  } else if (FirstEncounter) {
-    // retPt has more than 1 pred. 
+      // mark that retPt is a landing-pad to satisfy the verifier
+      retPt->setIsEHPad(true);
+    } else {
+      // retPt has more than 1 pred. 
 
-    // Copy everything in retPt over to a new block,
-    // which will be the target of local branches.
-    // We do this because the name of the retpt
-    // block whose address was taken must be preserved,
-    // and we do not want to constrain local branches
-    // to the retpt with a fixed register convention.
+      // Copy everything in retPt over to a new block,
+      // which will be the target of local branches.
+      // We do this because the name of the retpt
+      // block whose address was taken must be preserved,
+      // and we do not want to constrain local branches
+      // to the retpt with a fixed register convention.
 
-    MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
+      MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
 
-    // TODO(kavon): we insert it after this MBB so ExpandISelPseudos
-    // processes it. Otherwise it's probably better to add it before
-    // retPt instead.
-    MF->insert(std::next(MachineFunction::iterator(MBB)), newRet);
+      // TODO(kavon): we insert it after this MBB so ExpandISelPseudos
+      // processes it. Otherwise it's probably better to add it before
+      // retPt instead.
+      MF->insert(std::next(MachineFunction::iterator(MBB)), newRet);
 
-    // move all instructions to newRet
-    newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
+      // move all instructions to newRet
+      newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
 
-    // move all successors to newRet. 
+      // move all successors to newRet. 
 
-    // NOTE: we assume retPt does not contain a CPS call
-    // that returns to retPt, because that would be a 
-    // silly infinite loop. If that _is_ possible, you'll
-    // want to reimplement the below function manually.
-    newRet->transferSuccessorsAndUpdatePHIs(retPt);
+      // NOTE: we assume retPt does not contain a CPS call
+      // that returns to retPt, because that would be a 
+      // silly infinite loop. If that _is_ possible, you'll
+      // want to reimplement the below function manually.
+      newRet->transferSuccessorsAndUpdatePHIs(retPt);
 
-    // update predecessors of retPt to use newRet instead, 
-    // only if they are a local branch to retPt.
-    for (MachineBasicBlock *pred : retPt->predecessors()) {
-      if (pred->succ_size() == 1) {
-        // this block might have a CPSCALL, so we check.
-        bool HasCPSCall = false;
-        MachineBasicBlock::instr_iterator I = pred->instr_end();
-        while (!HasCPSCall && I != pred->instr_begin()) {
-          --I;
-          if (I->getOpcode() == X86::CPSCALLdi64)
-            HasCPSCall = true;
-        }
-
-        if (HasCPSCall)
-          continue;
-      }
-      pred->ReplaceUsesOfBlockWith(retPt, newRet);
-    }
-
-    // now that everything has been removed from retPt,
-    // we reinitialize it
-
-    for (MCPhysReg pr : PhysRegs) {
-      retPt->addLiveIn(pr);
-    }
-
-    // mark that retPt is a landing-pad to satisfy the verifier
-    retPt->setIsEHPad(true);
-
-    // replace uses of MBB in the phis of newRet with retPt instead,
-    // while adding fresh phys -> virt COPYs to retPt
-    for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
-          End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
-
-      for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
-        MachineOperand &BBO = I->getOperand(i);
-        if (BBO.getMBB() == MBB) {
-          MachineOperand &VRegO = I->getOperand(i-1);
-          
-          // find the physical register corresponding to VRegO
-          unsigned VReg = VRegO.getReg();
-          unsigned PReg = VReg;
-          while (RegMap.count(PReg) == 1) {
-            PReg = RegMap[PReg];
+      // update predecessors of retPt to use newRet instead, 
+      // only if they are a local branch to retPt.
+      for (MachineBasicBlock *pred : retPt->predecessors()) {
+        if (pred->succ_size() == 1) {
+          // this block might have a CPSCALL, so we check.
+          bool HasCPSCall = false;
+          MachineBasicBlock::instr_iterator I = pred->instr_end();
+          while (!HasCPSCall && I != pred->instr_begin()) {
+            --I;
+            if (I->getOpcode() == X86::CPSCALLdi64)
+              HasCPSCall = true;
           }
 
-          if (TargetRegisterInfo::isVirtualRegister(PReg))
-            report_fatal_error("could not find phys reg!");
+          if (HasCPSCall)
+            continue;
+        }
+        pred->ReplaceUsesOfBlockWith(retPt, newRet);
+      }
 
-          // append a  VReg = COPY PReg  instr to retPt
-          BuildMI(retPt, DL, TII->get(TargetOpcode::COPY), VReg)
-            .addReg(PReg, RegState::Kill);
+      // now that everything has been removed from retPt,
+      // we reinitialize it
 
-          // change the BBO to point to retPt
-          BBO.setMBB(retPt);
+      for (MCPhysReg pr : PhysRegs) {
+        retPt->addLiveIn(pr);
+      }
 
+      // mark that retPt is a landing-pad to satisfy the verifier
+      retPt->setIsEHPad(true);
+
+      // replace uses of MBB in the phis of newRet with retPt instead,
+      // while adding fresh phys -> virt COPYs to retPt
+      for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
+            End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
+
+        for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
+          MachineOperand &BBO = I->getOperand(i);
+          if (BBO.getMBB() == MBB) {
+            MachineOperand &VRegO = I->getOperand(i-1);
+            
+            // find the physical register corresponding to VRegO
+            unsigned VReg = VRegO.getReg();
+            unsigned PReg = VReg;
+            while (RegMap.count(PReg) == 1) {
+              PReg = RegMap[PReg];
+            }
+
+            if (TargetRegisterInfo::isVirtualRegister(PReg))
+              report_fatal_error("could not find phys reg!");
+
+            // append a  VReg = COPY PReg  instr to retPt
+            BuildMI(retPt, DL, TII->get(TargetOpcode::COPY), VReg)
+              .addReg(PReg, RegState::Kill);
+
+            // change the BBO to point to retPt
+            BBO.setMBB(retPt);
+
+          }
         }
       }
+
+      // set the only successor of retPt to be newRet and emit a jump
+      BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
+      retPt->addSuccessor(newRet);
+
+      // stick a label at the top of the retpt as an ASM comment for the mangler
+      const Twine t = Twine("myLabel");
+      MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
+      BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+
+      // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
+      // optionally accept an MCSymbol so that we don't have to emit this
+      // silly extra label.
+
+      assert(retPt->succ_size() == 1 && "should only be one successor now");
+
+      ReturnPointMap[retPt] = newRet;
+
     }
-
-    // set the only successor of retPt to be newRet and emit a jump
-    BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
-    retPt->addSuccessor(newRet);
-
-    // stick a label at the top of the retpt as an ASM comment for the mangler
-    const Twine t = Twine("myLabel");
-    MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
-    BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
-
-    // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
-    // optionally accept an MCSymbol so that we don't have to emit this
-    // silly extra label.
-
-    assert(retPt->succ_size() == 1 && "should only be one successor now");
-
-    ReturnPointMap[retPt] = newRet;
 
   } else {
     // there is already a new return point.
