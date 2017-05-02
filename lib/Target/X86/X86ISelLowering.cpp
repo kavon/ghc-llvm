@@ -26394,7 +26394,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
   const TargetInstrInfo *TII = STI.getInstrInfo();
-  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
   DebugLoc DL; // debug loc is irrelevant
 
 
@@ -26587,6 +26586,34 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
     // mark that retPt is a landing-pad to satisfy the verifier
     retPt->setIsEHPad(true);
+
+    /////////
+    // now, we need to retrieve the name this retPt is expected to have
+    // from the IR Instruction metadata on the CPSCALL in MBB
+
+    // Last IR Call Instr in the block must be the CPSCALL.
+    bool FoundCall = false;
+    const BasicBlock* BB = MBB->getBasicBlock();
+    BasicBlock::const_reverse_iterator II = BB->rbegin();
+    BasicBlock::const_reverse_iterator IIE = BB->rend();
+    while (II != IIE) {
+      if (II->getOpcode() == Instruction::Call) {
+        FoundCall = true;
+        break;
+      }
+      II++;
+    }
+    if (!FoundCall)
+      report_fatal_error("IR CPS call instruction not found?");
+
+    // grab the label name from metadata in II
+    MDNode* md = II->getMetadata("cps.retpt");
+    if (md == nullptr)
+      report_fatal_error("no !cps.retpt metadata found on IR CPSCALL.");
+
+    // TODO how the heck do we get the MDOperand as a string??
+    // I'm going to guess some sort of dynamic cast?
+    md->getOperand(0).get()->dump();
 
     // stick a label at the top of the retpt as an ASM comment for the mangler
     const Twine t = Twine("myLabel"); // TODO(kavon): get name from metadata
