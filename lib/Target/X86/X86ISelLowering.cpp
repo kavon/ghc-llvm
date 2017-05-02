@@ -26479,7 +26479,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // the retPt and add live-ins
     
     retPt->splice(retPt->begin(), MBB, 
-      std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+      std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
 
     for (auto pReg : PhysRegs)
       retPt->addLiveIn(pReg);
