@@ -26478,6 +26478,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // just splice the COPY instructions onto
     // the retPt and add live-ins
     
+    // move the copies to the retpt
     retPt->splice(retPt->begin(), MBB, 
       std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
 
@@ -26578,6 +26579,15 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     // set the only successor of retPt to be newRet and emit a jump
     BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
     retPt->addSuccessor(newRet);
+
+    // stick a label at the top of the retpt as an ASM comment for the mangler
+    const Twine t = Twine("myLabel");
+    MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
+    BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+
+    // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
+    // optionally accept an MCSymbol so that we don't have to emit this
+    // silly extra label.
 
     assert(retPt->succ_size() == 1 && "should only be one successor now");
 
