@@ -59,7 +59,6 @@
 #include <bitset>
 #include <cctype>
 #include <numeric>
-#include <iostream> // TODO(kavon): remove this
 using namespace llvm;
 
 #define DEBUG_TYPE "x86-isel"

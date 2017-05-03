@@ -19,7 +19,6 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace llvm {
   class X86Subtarget;
