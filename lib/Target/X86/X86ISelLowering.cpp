@@ -26450,6 +26450,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     II = next;
   }
 
+  // TODO(kavon): might be good here to ensure that PhysRegs.size() == MI.liveOuts()
+  // so we know we didn't miss anything.
+
   //////////
   // stick the stack-adjust-up instr that we removed
   // before the CPSCALL
@@ -26588,7 +26591,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     retPt->setIsEHPad(true);
 
     /////////
-    // now, we need to retrieve the name this retPt is expected to have
+    // now, we need to retrieve the name this retPt was requested to have
     // from the IR Instruction metadata on the CPSCALL in MBB
 
     // Last IR Call Instr in the block must be the CPSCALL.
@@ -26603,26 +26606,23 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       }
       II++;
     }
-    if (!FoundCall)
-      report_fatal_error("IR CPS call instruction not found?");
 
     // grab the label name from metadata in II
-    MDNode* md = II->getMetadata("cps.retpt");
-    if (md == nullptr)
-      report_fatal_error("no !cps.retpt metadata found on IR CPSCALL.");
+    MDNode* md = nullptr;
+    if (FoundCall && (md = II->getMetadata("cps.retpt"))) {
+      // TODO how the heck do we get the MDOperand as a string??
+      // I'm going to guess some sort of dynamic cast?
+      md->getOperand(0).get()->dump();
 
-    // TODO how the heck do we get the MDOperand as a string??
-    // I'm going to guess some sort of dynamic cast?
-    md->getOperand(0).get()->dump();
+      // stick a label at the top of the retpt as an ASM comment for the mangler
+      const Twine t = Twine("myLabel"); // TODO(kavon): get name from metadata
+      MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
+      BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
 
-    // stick a label at the top of the retpt as an ASM comment for the mangler
-    const Twine t = Twine("myLabel"); // TODO(kavon): get name from metadata
-    MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
-    BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
-
-    // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
-    // optionally accept an MCSymbol so that we don't have to emit this
-    // silly extra label.
+      // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
+      // optionally accept an MCSymbol so that we don't have to emit this
+      // silly extra label.
+    }
 
   } else {
     // there is already a new return point.
@@ -26686,7 +26686,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // we can add a "returnedMBB" local to determine which one to return so
   // that expandISelPseudos hits every block. 
   return MBB;
-
 }
 
 MachineBasicBlock *
