@@ -26607,21 +26607,21 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       II++;
     }
 
-    // grab the label name from metadata in II
+    // grab the label name from metadata in II, if any, and add it to retPt
     MDNode* md = nullptr;
     if (FoundCall && (md = II->getMetadata("cps.retpt"))) {
-      // TODO how the heck do we get the MDOperand as a string??
-      // I'm going to guess some sort of dynamic cast?
-      md->getOperand(0).get()->dump();
+      if (md->getNumOperands() != 1)
+        report_fatal_error("must have only one argument to cps.retpt metadata.");
+
+      Metadata* mdVal = md->getOperand(0).get();
+      MDString* mdStr = dyn_cast<MDString>(mdVal);
+
+      if (mdStr == nullptr)
+        report_fatal_error("argument to cps.retpt metadata must be a string.");
 
       // stick a label at the top of the retpt as an ASM comment for the mangler
-      const Twine t = Twine("myLabel"); // TODO(kavon): get name from metadata
-      MCSymbol *Label = MF->getContext().createTempSymbol(t, true, false);
+      MCSymbol *Label = MF->getContext().createTempSymbol(mdStr->getString(), true, false);
       BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
-
-      // NOTE: we could modify MachineModuleInfo::getAddrLabelSymbolToEmit to
-      // optionally accept an MCSymbol so that we don't have to emit this
-      // silly extra label.
     }
 
   } else {
