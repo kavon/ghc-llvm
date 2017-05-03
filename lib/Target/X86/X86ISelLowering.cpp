@@ -26495,10 +26495,9 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
       MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
 
-      // TODO(kavon): we insert it after this MBB so ExpandISelPseudos
-      // processes it. Otherwise it's probably better to add it before
-      // retPt instead.
-      MF->insert(std::next(MachineFunction::iterator(MBB)), newRet);
+      // stick newRet after retPt. this takes care of any layout successors
+      // as well.
+      MF->insert(std::next(MachineFunction::iterator(retPt)), newRet);
 
       // move _all_ instructions to newRet
       newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
