@@ -26488,17 +26488,10 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     } else {
       // retPt has more than 1 pred. 
 
-      // TODO(kavon): is the whole moving everything to a new
-      // block needed anymore? we can just make the newRet block
-      // with the COPYs and update phis in retPt, since
-      // we're now retrieving the GC name from metadata.
-
       // Copy everything in retPt over to a new block,
       // which will be the target of local branches.
-      // We do this because the name of the retpt
-      // block whose address was taken must be preserved,
-      // and we do not want to constrain local branches
-      // to the retpt with a fixed register convention.
+      // We do this to avoid having to update the blockaddress
+      // operands in the IR to refer to this new block.
 
       MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
 
@@ -26534,6 +26527,13 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
           if (HasCPSCall)
             continue;
         }
+
+        if (pred->isLayoutSuccessor(retPt)) {
+          // pred currently fall-throughs to retPt,
+          // so we'll have it fall-through to newRet instead.
+          pred->moveBefore(newRet);
+        }
+
         pred->ReplaceUsesOfBlockWith(retPt, newRet);
       }
 
