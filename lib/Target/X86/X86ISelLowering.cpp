@@ -2421,6 +2421,8 @@ X86TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   X86ISD::NodeType opcode = X86ISD::RET_FLAG;
   if (CallConv == CallingConv::X86_INTR)
     opcode = X86ISD::IRET;
+  else if (CallConv == CallingConv::GHC)
+    opcode = X86ISD::CPS_RET;
   return DAG.getNode(opcode, dl, MVT::Other, RetOps);
 }
 
@@ -2442,7 +2444,7 @@ bool X86TargetLowering::isUsedByReturnOnly(SDNode *N, SDValue &Chain) const {
   bool HasRet = false;
   for (SDNode::use_iterator UI = Copy->use_begin(), UE = Copy->use_end();
        UI != UE; ++UI) {
-    if (UI->getOpcode() != X86ISD::RET_FLAG)
+    if (UI->getOpcode() != X86ISD::RET_FLAG && UI->getOpcode() != X86ISD::CPS_RET)
       return false;
     // If we are returning more than one value, we can definitely
     // not make a tail call see PR19530
@@ -24245,6 +24247,7 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::FST:                return "X86ISD::FST";
   case X86ISD::CALL:               return "X86ISD::CALL";
   case X86ISD::CPS_CALL:           return "X86ISD::CPS_CALL";
+  case X86ISD::CPS_RET:            return "X86ISD::CPS_RET";
   case X86ISD::RDTSC_DAG:          return "X86ISD::RDTSC_DAG";
   case X86ISD::RDTSCP_DAG:         return "X86ISD::RDTSCP_DAG";
   case X86ISD::RDPMC_DAG:          return "X86ISD::RDPMC_DAG";

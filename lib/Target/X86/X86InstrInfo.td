@@ -196,6 +196,9 @@ def X86cps_call    : SDNode<"X86ISD::CPS_CALL",     SDT_X86Call,
                         [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
                          SDNPVariadic]>;
 
+def X86cps_ret : SDNode<"X86ISD::CPS_RET", SDTX86Ret,
+                        [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
 def X86rep_stos: SDNode<"X86ISD::REP_STOS", SDTX86RepStr,
                         [SDNPHasChain, SDNPInGlue, SDNPOutGlue, SDNPMayStore]>;
 def X86rep_movs: SDNode<"X86ISD::REP_MOVS", SDTX86RepStr,
