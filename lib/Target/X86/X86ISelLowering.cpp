@@ -26398,22 +26398,23 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   const TargetInstrInfo *TII = STI.getInstrInfo();
   DebugLoc DL; // debug loc is irrelevant
 
-
-  //////////
-  // Scan the instructions following the MI, collecting
-  // information about register copies & physical registers.
-  // We also pull out the stack adjustment instruction
-  // and do assumption checking.
+  /////////////
+  // -- Prepare to split the block apart --
   //
+  // Identify the virtual registers corresponding to the
+  // physical registers defined by the CPSCALL.
+  // In addition, we look for the stack-up adjustment
+  // instruction.
 
-  // reg1 -> reg2 iff reg1 = COPY reg2 and reg1 is virtual
-  SmallDenseMap<unsigned, unsigned, 32> RegMap; 
-  std::vector<MCPhysReg> PhysRegs;
+  // reg1 -> reg2 iff reg1 = COPY reg2 and reg1 is virtual 
+  std::vector<std::pair<unsigned,MCPhysReg>> RegCopies;
   MachineInstr *StackAdjustUp = NULL;
 
+  bool endOfRetSeq = false;
   MachineBasicBlock::iterator II = std::next(MachineBasicBlock::iterator(MI));
-  while (II != MBB->end() && !II->isTerminator()) {
+  do {
     bool foundStackAdjust = false;
+    bool deleteInstr = false;
 
     if (II->isCopy()) {
       MachineOperand &toArg = II->getOperand(0);
@@ -26426,33 +26427,35 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
         if (TargetRegisterInfo::isPhysicalRegister(toReg))
           report_fatal_error("unexpected phys register overwrite");
 
+        // we found what we're looking to put into the map,
+        // a virt <- COPY phys instruction, so we record it and
+        // remove the instruction
         if (TargetRegisterInfo::isPhysicalRegister(fromReg)) {
-          PhysRegs.push_back(fromReg);
+          RegCopies.push_back(std::make_pair(toReg, fromReg));
+          deleteInstr = true;
         }
 
-        RegMap[toReg] = fromReg;
-
       } else {
-        II->dump();
-        report_fatal_error("unexpected COPY involving a non-reg operand");        
+        endOfRetSeq = true;   
       }
       
     } else if (II->getOpcode() == X86::ADJCALLSTACKUP64) {
       assert(StackAdjustUp == NULL && "found multiple stack adjusts?");
       foundStackAdjust = true;
     } else {
-      II->dump();
-      report_fatal_error("unexpected instruction following a CPS call");
+      endOfRetSeq = true;
     }
 
     MachineBasicBlock::iterator next = std::next(II);
     if (foundStackAdjust)
       StackAdjustUp = II->removeFromParent();
+    else if (deleteInstr)
+      II->eraseFromParent();
 
     II = next;
-  }
+  } while (!endOfRetSeq && II != MBB->end() && !II->isTerminator());
 
-  // TODO(kavon): might be good here to ensure that PhysRegs.size() == MI.liveOuts()
+  // TODO(kavon): ensure that RegCopies == MI.liveOuts()
   // so we know we didn't miss anything.
 
   //////////
@@ -26460,10 +26463,81 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // before the CPSCALL
   //
   assert(StackAdjustUp != NULL && "did not find a stack adjust?");
-
   MachineOperand &SP_def = StackAdjustUp->getOperand(2);
   SP_def.setIsDead(false); // SP is not dead anymore
   MBB->insert(MI, StackAdjustUp);
+
+  //////////
+  // split the block apart
+
+  MachineBasicBlock* retPt = MF->CreateMachineBasicBlock();
+
+  // stick retpt after MBB. this takes care of any layout successors
+  // as well.
+  MF->insert(std::next(MachineFunction::iterator(MBB)), retPt);  
+
+  for (auto regPair : RegCopies) {
+    unsigned VReg = regPair.first;
+    unsigned PReg = regPair.second;
+
+    // append a  VReg = COPY PReg  instr to retPt
+    BuildMI(retPt, DL, TII->get(TargetOpcode::COPY), VReg)
+      .addReg(PReg, RegState::Kill);
+
+    // add it as a live-in
+    retPt->addLiveIn(PReg);
+  }
+
+  // move instructions following MI onto the end of retpt.
+  retPt->splice(retPt->end(), MBB, 
+    std::next(MachineBasicBlock::iterator(MI)), MBB->end());
+
+  // transfer successors to retpt.
+  retPt->transferSuccessorsAndUpdatePHIs(MBB);
+
+  // set retpt as the succ of MBB to keep retpt alive.
+  // otherwise later stages may delete its contents!
+  MBB->addSuccessor(retPt);
+
+  retPt->setIsEHPad(true); // to satisfy verifier
+  retPt->setHasAddressTaken();
+
+
+
+
+  //////////
+  // add a store to the SP of this new block's address 
+
+  /////////
+  // turn the CPSCALL into a TCReturn
+
+
+  MBB->dump();
+  retPt->dump();
+
+  report_fatal_error("stopping here");
+
+  // Expand-pseudo-ops should continue on by scanning
+  // retpt.
+  return retPt;
+
+
+
+/************************************************************
+  //////////
+  // Scan the instructions following the MI, collecting
+  // information about register copies & physical registers.
+  // We also pull out the stack adjustment instruction
+  // and do assumption checking.
+  //
+
+  
+
+  
+
+  
+
+  
   
 
   //////////
@@ -26483,9 +26557,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       // just splice the COPY instructions onto
       // the retPt and add live-ins
       
-      // move the copies to the retpt
-      retPt->splice(retPt->begin(), MBB, 
-        std::next(MachineBasicBlock::iterator(MI)), MBB->getFirstTerminator());
+      
 
     } else {
       // retPt has more than 1 pred. 
@@ -26687,6 +26759,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // we can add a "returnedMBB" local to determine which one to return so
   // that expandISelPseudos hits every block. 
   return MBB;
+  */
 }
 
 MachineBasicBlock *
@@ -26974,6 +27047,9 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   case X86::CPSCALLri64:
   case X86::CPSCALLmi64:
     return EmitCPSCall(MI, BB);
+
+  case X86::CPSRET:
+    report_fatal_error("TODO: implement lowering of CPSRET!");
   }
 }
 
