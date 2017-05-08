@@ -26392,6 +26392,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // Keep track of return points that were generated
   // when expanding a CPS call pseudo-instr.
   static DenseMap<MachineBasicBlock *, MachineBasicBlock *> ReturnPointMap;
+  // TODO this map seems unnessecary now.
 
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
@@ -26500,236 +26501,29 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MBB->addSuccessor(retPt);
 
   retPt->setIsEHPad(true); // to satisfy verifier
-  retPt->setHasAddressTaken();
+
+  //////// TODO ?
+  // AsmPrinter::EmitBasicBlockStart assumes that there is a BasicBlock associated
+  // with the MBB if we set that it's addr is taken, because it wants to print
+  // the IR block's name i guess. do we actually have to say its addr was taken?
+  // retPt->setHasAddressTaken(); 
 
 
-
-
-  //////////
+  ////////// TODO
   // add a store to the SP of this new block's address 
+
+  /* TODO emit this LEA-MOV seq
+  Live Ins: %R13 %RBP
+  %vreg3<def> = COPY %RBP; GR64:%vreg3
+  %vreg2<def> = COPY %R13; GR64:%vreg2
+  %vreg4<def> = LEA64r %RIP, 1, %noreg, <blockaddress(@foo, %retpt)>, %noreg; GR64:%vreg4
+  MOV64mr %vreg2, 1, %noreg, 0, %noreg, %vreg4<kill>; mem:ST8[%sp] GR64:%vreg2,%vreg4
+  */
+
 
   /////////
   // turn the CPSCALL into a TCReturn
 
-
-  MBB->dump();
-  retPt->dump();
-
-  report_fatal_error("stopping here");
-
-  // Expand-pseudo-ops should continue on by scanning
-  // retpt.
-  return retPt;
-
-
-
-/************************************************************
-  //////////
-  // Scan the instructions following the MI, collecting
-  // information about register copies & physical registers.
-  // We also pull out the stack adjustment instruction
-  // and do assumption checking.
-  //
-
-  
-
-  
-
-  
-
-  
-  
-
-  //////////
-  // grab the ret point and check whether this is the first
-  // time a CPSCALL targeting this ret point was expanded.
-
-  assert(MBB->succ_size() == 1 && "block of a CPS call must have exactly one successor.");
-  MachineBasicBlock *retPt = *(MBB->succ_begin());
-
-  assert(retPt->hasAddressTaken() && "succ is likely wrong!");
-
-  bool FirstEncounter = ReturnPointMap.count(retPt) == 0;
-
-  if (FirstEncounter) {
-    if(retPt->pred_size() == 1) {
-      // there's no need for a new block, we can
-      // just splice the COPY instructions onto
-      // the retPt and add live-ins
-      
-      
-
-    } else {
-      // retPt has more than 1 pred. 
-
-      // Copy everything in retPt over to a new block,
-      // which will be the target of local branches.
-      // We do this to avoid having to update the blockaddress
-      // operands in the IR to refer to this new block.
-
-      MachineBasicBlock* newRet = MF->CreateMachineBasicBlock();
-
-      // stick newRet after retPt. this takes care of any layout successors
-      // as well.
-      MF->insert(std::next(MachineFunction::iterator(retPt)), newRet);
-
-      // move _all_ instructions to newRet
-      newRet->splice(newRet->begin(), retPt, retPt->begin(), retPt->end());
-
-      // move all successors to newRet. 
-
-      // NOTE: we assume retPt does not contain a CPS call
-      // that returns to retPt, because that would be a 
-      // silly infinite loop. If that _is_ possible, you'll
-      // want to reimplement the below function manually.
-      newRet->transferSuccessorsAndUpdatePHIs(retPt);
-
-      // update predecessors of retPt to use newRet instead, 
-      // only if they are a local branch to retPt.
-      for (MachineBasicBlock *pred : retPt->predecessors()) {
-        if (pred->succ_size() == 1) {
-          // this block might have a CPSCALL, so we check.
-          bool HasCPSCall = false;
-          MachineBasicBlock::instr_iterator I = pred->instr_end();
-          while (!HasCPSCall && I != pred->instr_begin()) {
-            --I;
-            if (I->getOpcode() == X86::CPSCALLdi64)
-              HasCPSCall = true;
-          }
-
-          if (HasCPSCall)
-            continue;
-        }
-
-        if (pred->isLayoutSuccessor(retPt)) {
-          // pred currently fall-throughs to retPt,
-          // so we'll have it fall-through to newRet instead.
-          pred->moveBefore(newRet);
-        }
-
-        pred->ReplaceUsesOfBlockWith(retPt, newRet);
-      }
-
-      // now that everything has been removed from retPt,
-      // we reinitialize it with instructions
-
-      // replace uses of MBB in the phis of newRet with retPt instead,
-      // while adding fresh phys -> virt COPYs to retPt
-      for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
-            End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
-
-        for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
-          MachineOperand &BBO = I->getOperand(i);
-          if (BBO.getMBB() == MBB) {
-            MachineOperand &VRegO = I->getOperand(i-1);
-            
-            // find the physical register corresponding to VRegO
-            unsigned VReg = VRegO.getReg();
-            unsigned PReg = VReg;
-            while (RegMap.count(PReg) == 1) {
-              PReg = RegMap[PReg];
-            }
-
-            if (TargetRegisterInfo::isVirtualRegister(PReg))
-              report_fatal_error("could not find phys reg!");
-
-            // append a  VReg = COPY PReg  instr to retPt
-            BuildMI(retPt, DL, TII->get(TargetOpcode::COPY), VReg)
-              .addReg(PReg, RegState::Kill);
-
-            // change the BBO to point to retPt
-            BBO.setMBB(retPt);
-
-          }
-        }
-      }
-
-      // set the only successor of retPt to be newRet and emit a jump
-      BuildMI(retPt, DL, TII->get(X86::JMP_1)).addMBB(newRet);
-      retPt->addSuccessor(newRet);
-
-      assert(retPt->succ_size() == 1 && "should only be one successor now");
-
-      ReturnPointMap[retPt] = newRet;
-    }
-
-    // whether there is 1 or more preds, if it's the first encounter,
-    // we also perform the following actions on retpt.
-
-    // set the live-ins on retPt
-    for (auto pReg : PhysRegs)
-      retPt->addLiveIn(pReg);
-
-    // mark that retPt is a landing-pad to satisfy the verifier
-    retPt->setIsEHPad(true);
-
-    /////////
-    // now, we need to retrieve the name this retPt was requested to have
-    // from the IR Instruction metadata on the CPSCALL in MBB
-
-    // Last IR Call Instr in the block must be the CPSCALL.
-    bool FoundCall = false;
-    const BasicBlock* BB = MBB->getBasicBlock();
-    BasicBlock::const_reverse_iterator II = BB->rbegin();
-    BasicBlock::const_reverse_iterator IIE = BB->rend();
-    while (II != IIE) {
-      if (II->getOpcode() == Instruction::Call) {
-        FoundCall = true;
-        break;
-      }
-      II++;
-    }
-
-    // grab the label name from metadata in II, if any, and add it to retPt
-    MDNode* md = nullptr;
-    if (FoundCall && (md = II->getMetadata("cps.retpt"))) {
-      if (md->getNumOperands() != 1)
-        report_fatal_error("must have only one argument to cps.retpt metadata.");
-
-      Metadata* mdVal = md->getOperand(0).get();
-      MDString* mdStr = dyn_cast<MDString>(mdVal);
-
-      if (mdStr == nullptr)
-        report_fatal_error("argument to cps.retpt metadata must be a string.");
-
-      // stick a label at the top of the retpt as an ASM comment for the mangler
-      MCSymbol *Label = MF->getContext().createTempSymbol(mdStr->getString(), true, false);
-      BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
-    }
-
-  } else {
-    // there is already a new return point.
-
-    MachineBasicBlock* newRet = ReturnPointMap[retPt];
-
-    // remove our vars from the phis in newRet.
-    unsigned varsRemoved = 0;
-    for (MachineBasicBlock::instr_iterator I = newRet->instr_begin(),
-          End = newRet->instr_end(); I != End && I->isPHI(); ++I) {
-
-      unsigned operandToDrop = 0; // i = block, i-1 = var
-      for (unsigned i = 2, e = I->getNumOperands()+1; i != e; i += 2) {
-        MachineOperand &BBO = I->getOperand(i);
-        if (BBO.getMBB() == MBB) {
-          operandToDrop = i;
-          break;
-        }
-      }
-      assert(operandToDrop != 0 && "did not find our phi operand?");
-      I->RemoveOperand(operandToDrop); // block
-      I->RemoveOperand(operandToDrop-1); // var
-      varsRemoved++;
-    }
-
-    assert(varsRemoved == PhysRegs.size() && "return point has an arity mismatch!");
-    // NOTE: we otherwise assume that, for each phi node of the original IR, 
-    // the same physical register is the source of each returned value of a CPSCALL.
-  }
-
-  // delete all instructions following the CPS call
-  MBB->erase(std::next(MachineBasicBlock::iterator(MI)), MBB->end());
-
-  // Create a TCRETURN instruction.
   MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
   MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
 
@@ -26748,18 +26542,97 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       TCRet->addOperand(MO);
   }
 
-  // NOTE: we should not remove retPt as a successor of MBB,
-  // because if retPt no longer has any predecessors, its
-  // contents will be deleted!
-
   // finally, delete the CPSCALL
   MI.eraseFromParent();
 
-  // TODO(kavon): should newRet be returned when first encountering retpt?
-  // we can add a "returnedMBB" local to determine which one to return so
-  // that expandISelPseudos hits every block. 
+
+  MF->dump();
+
+  // expand-isel-pseudos should continue on by scanning
+  // retpt.
+  return retPt;
+
+}
+
+MachineBasicBlock *
+X86TargetLowering::EmitCPSRet(MachineInstr &MI,
+                               MachineBasicBlock *MBB) const {
+
+  MachineFunction *MF = MBB->getParent();
+  const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
+  const TargetInstrInfo *TII = STI.getInstrInfo();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
+  const TargetRegisterClass *PointerRC = TRI->getPointerRegClass(*MF);
+  const unsigned NoRegister = 0; // Guaranteed to be the NoRegister value for
+                                 // all targets.
+  DebugLoc DL; // debug loc is irrelevant
+
+  //////
+  // load the return address from SP
+
+  // grab the first returned-value operand, which we assume is the stack pointer
+  // and that it is pointing to the return address.
+  MachineOperand SPReg = MI.getOperand(1);
+  assert(SPReg.isReg() && "unexpected non-register first returned value for SP");
+
+  // emit a load from SPReg to a virt reg to obtain the return address
+  unsigned RetAddr = MRI.createVirtualRegister(PointerRC);
+
+  // TODO: would emitting a virt <- COPY phys instruction and loading from the virt reg
+  // allow for better codegen?
+
+  // unsigned SPasVReg = MRI.createVirtualRegister(PointerRC);
+  // BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(TargetOpcode::COPY), SPasVReg)
+  //   .addReg(SPReg.getReg());
+
+  BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(X86::MOV64rm), RetAddr)
+    .addReg(SPReg.getReg())
+    .addImm(1)
+    .addReg(NoRegister)
+    .addImm(0)
+    .addReg(NoRegister)
+    ;
+
+  //////
+  // emit a TCRETURN in place of the CPSRET
+
+  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNri64), DL);
+  MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
+
+  // TCRet starts with RSP as a imp-use in operand 0, so we remove it
+  // for now.
+  TCRet->RemoveOperand(0);
+
+  // then, add the jump target
+  TCRet->addOperand(MachineOperand::CreateReg(RetAddr, /*isDef*/ false));
+
+  // Add the stack adjust immediate from the CPSRET
+  MachineOperand StackAdjustVal = MI.getOperand(0);
+  assert(StackAdjustVal.isImm() && "unexpected non-immediate stack adjustment!");
+  TCRet->addOperand(StackAdjustVal);
+
+  // then, grab the register operands from the CPSRET
+  // and add them as implicitly used registers to the TCRETURN
+  for (const MachineOperand &MO : MI.operands()) {
+    if (MO.isReg()) {
+      MachineOperand newOp = MachineOperand::CreateReg(MO.getReg(), /*isDef*/ false);
+      newOp.setIsUse(true);
+      newOp.setImplicit(true);
+      TCRet->addOperand(newOp);
+    }
+  }
+
+  /////// TODO
+  // 1. add back the imp-used RSP
+  // 2. insert an ADJCALLSTACKUP64 instruction?
+
+  // finally, delete the CPSRET
+  MI.eraseFromParent();
+
+  MF->dump();
+
   return MBB;
-  */
 }
 
 MachineBasicBlock *
@@ -27049,7 +26922,7 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     return EmitCPSCall(MI, BB);
 
   case X86::CPSRET:
-    report_fatal_error("TODO: implement lowering of CPSRET!");
+    return EmitCPSRet(MI, BB);
   }
 }
 
