@@ -26397,6 +26397,11 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
   const TargetInstrInfo *TII = STI.getInstrInfo();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
+  const TargetRegisterClass *PointerRC = TRI->getPointerRegClass(*MF);
+  const unsigned NoRegister = 0; // Guaranteed to be the NoRegister value for
+                                 // all targets.
   DebugLoc DL; // debug loc is irrelevant
 
   /////////////
@@ -26508,21 +26513,43 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // the IR block's name i guess. do we actually have to say its addr was taken?
   // retPt->setHasAddressTaken(); 
 
+  //////////
+  // add a store of retPt's address to the SP
 
-  ////////// TODO
-  // add a store to the SP of this new block's address 
+  unsigned RetAddr = MRI.createVirtualRegister(PointerRC);
 
-  /* TODO emit this LEA-MOV seq
-  Live Ins: %R13 %RBP
-  %vreg3<def> = COPY %RBP; GR64:%vreg3
-  %vreg2<def> = COPY %R13; GR64:%vreg2
-  %vreg4<def> = LEA64r %RIP, 1, %noreg, <blockaddress(@foo, %retpt)>, %noreg; GR64:%vreg4
-  MOV64mr %vreg2, 1, %noreg, 0, %noreg, %vreg4<kill>; mem:ST8[%sp] GR64:%vreg2,%vreg4
-  */
+  // RetAddr<def> = LEA64r %RIP, 1, %noreg, retPt, %noreg
+  BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(X86::LEA64r), RetAddr)
+    .addReg(X86::RIP)
+    .addImm(1)
+    .addReg(NoRegister)
+    .addMBB(retPt)
+    .addReg(NoRegister)
+    ;
+
+  // CPSCALL operands: target, regmask, RSP<imp-use>, firstArgReg
+  MachineOperand SPReg = MI.getOperand(3); // get firstArgReg
+  assert(SPReg.isReg() && "unexpected non-register first returned value for SP");
+
+  // MOV64mr SPReg, 1, %noreg, 0, %noreg, RetAddr<kill>
+  BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(X86::MOV64mr))
+    .addReg(SPReg.getReg()) // dest
+    .addImm(1)
+    .addReg(NoRegister)
+    .addImm(0)
+    .addReg(NoRegister)
+    .addReg(RetAddr, RegState::Kill)
+    ;
+
+  ////// TODO
+  // Fetch from the metadata of this call the name of the EH Label
+  // we will add to retPt to aid the mangler.
 
 
   /////////
   // turn the CPSCALL into a TCReturn
+
+  // TODO: test an indirect call, I think we need to emit a TCRetri64
 
   MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
   MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
@@ -26544,9 +26571,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // finally, delete the CPSCALL
   MI.eraseFromParent();
-
-
-  MF->dump();
 
   // expand-isel-pseudos should continue on by scanning
   // retpt.
