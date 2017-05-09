@@ -26387,7 +26387,8 @@ X86TargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
 
 MachineBasicBlock *
 X86TargetLowering::EmitCPSCall(MachineInstr &MI,
-                               MachineBasicBlock *MBB) const {
+                               MachineBasicBlock *MBB,
+                               unsigned TCOpcode) const {
 
   // When splitting a MBB, we keep track of the earliest position in the original
   // BasicBlock where the associated metadata on the IR instr can be found.
@@ -26600,9 +26601,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   /////////
   // turn the CPSCALL into a TCReturn
 
-  // TODO: test an indirect call, I think we need to emit a TCRetri64
-
-  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(X86::TCRETURNdi64), DL);
+  MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(TCOpcode), DL);
   MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
 
   // TCRet starts with RSP as a imp-use in operand 0, so we remove it.
@@ -26993,10 +26992,10 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     return BB;
   }
   case X86::CPSCALLdi64:
-    return EmitCPSCall(MI, BB);
+    return EmitCPSCall(MI, BB, X86::TCRETURNdi64);
 
   case X86::CPSCALLri64:
-    report_fatal_error("CPSCALLri64 was encountered!");
+    return EmitCPSCall(MI, BB, X86::TCRETURNri64);
 
   case X86::CPSCALLmi64:
     report_fatal_error("CPSCALLmi64 is unhandled at this time.");

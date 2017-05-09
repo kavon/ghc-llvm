@@ -1281,7 +1281,8 @@ namespace llvm {
                                              MachineBasicBlock *MBB) const;
 
     MachineBasicBlock *EmitCPSCall(MachineInstr &MI,
-                                        MachineBasicBlock *MBB) const;
+                                        MachineBasicBlock *MBB,
+                                        unsigned TCOpcode) const;
 
     MachineBasicBlock *EmitCPSRet(MachineInstr &MI,
                                         MachineBasicBlock *MBB) const;
