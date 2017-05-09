@@ -26389,10 +26389,10 @@ MachineBasicBlock *
 X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                MachineBasicBlock *MBB) const {
 
-  // Keep track of return points that were generated
-  // when expanding a CPS call pseudo-instr.
-  static DenseMap<MachineBasicBlock *, MachineBasicBlock *> ReturnPointMap;
-  // TODO this map seems unnessecary now.
+  // Store the continuation of metadata searches. The use of this map
+  // relies on the fact that CPS function call-sites within a block cannot
+  // be reordered.
+  static DenseMap<const BasicBlock*, BasicBlock::const_iterator> MetadataSearch;
 
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
@@ -26403,6 +26403,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   const unsigned NoRegister = 0; // Guaranteed to be the NoRegister value for
                                  // all targets.
   DebugLoc DL; // debug loc is irrelevant
+
 
   /////////////
   // -- Prepare to split the block apart --
@@ -26464,6 +26465,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // TODO(kavon): ensure that RegCopies == MI.liveOuts()
   // so we know we didn't miss anything.
 
+
   //////////
   // stick the stack-adjust-up instr that we removed
   // before the CPSCALL
@@ -26472,6 +26474,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   MachineOperand &SP_def = StackAdjustUp->getOperand(2);
   SP_def.setIsDead(false); // SP is not dead anymore
   MBB->insert(MI, StackAdjustUp);
+
 
   //////////
   // split the block apart
@@ -26507,11 +26510,55 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   retPt->setIsEHPad(true); // to satisfy verifier
 
-  //////// TODO ?
-  // AsmPrinter::EmitBasicBlockStart assumes that there is a BasicBlock associated
-  // with the MBB if we set that it's addr is taken, because it wants to print
-  // the IR block's name i guess. do we actually have to say its addr was taken?
-  // retPt->setHasAddressTaken(); 
+
+  //////
+  // Fetch from the metadata of this call to get the name 
+  // to get the EH Label we will add to retPt to aid the mangler.
+
+  MF->dump();
+
+  MDNode* md = nullptr;
+  { // new scope
+    bool FoundCall = false;
+    const BasicBlock* BB = MBB->getBasicBlock();
+
+    BasicBlock::const_iterator END = BB->end();
+    BasicBlock::const_iterator II = BB->begin();
+
+    if (MetadataSearch.count(BB))
+      II = MetadataSearch[BB];  // Continue where we left off in this block.
+
+    while (II != END && !FoundCall) {
+      if (II->getOpcode() == Instruction::Call) {
+        md = II->getMetadata("cps.retpt");
+        if (md)
+          FoundCall = true;
+      }
+      II++;
+    }
+    // the metadata is not optional right now.
+    if (!FoundCall) {
+      BB->dump();
+      report_fatal_error("at least one CPS call is missing cps.retpt metadata in the above block.");
+    }
+
+    MetadataSearch[BB] = II;
+  } // end scope
+
+  // obtain the name
+  if (md->getNumOperands() != 1)
+    report_fatal_error("must have only one argument to cps.retpt metadata.");
+
+  Metadata* mdVal = md->getOperand(0).get();
+  MDString* mdStr = dyn_cast<MDString>(mdVal);
+
+  if (mdStr == nullptr)
+    report_fatal_error("argument to cps.retpt metadata must be a string.");
+
+  // stick a label at the top of the retpt
+  MCSymbol *Label = MF->getContext().createTempSymbol(mdStr->getString(), true, false);
+  BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+ 
 
   //////////
   // add a store of retPt's address to the SP
@@ -26523,7 +26570,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(X86::RIP)
     .addImm(1)
     .addReg(NoRegister)
-    .addMBB(retPt)
+    .addSym(Label)        // .addMBB(retPt) is another way to go if we wanted to.
     .addReg(NoRegister)
     ;
 
@@ -26540,10 +26587,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(NoRegister)
     .addReg(RetAddr, RegState::Kill)
     ;
-
-  ////// TODO
-  // Fetch from the metadata of this call the name of the EH Label
-  // we will add to retPt to aid the mangler.
 
 
   /////////
