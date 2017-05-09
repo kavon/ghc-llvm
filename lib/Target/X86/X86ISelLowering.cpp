@@ -26576,16 +26576,15 @@ X86TargetLowering::EmitCPSRet(MachineInstr &MI,
   MachineOperand SPReg = MI.getOperand(1);
   assert(SPReg.isReg() && "unexpected non-register first returned value for SP");
 
-  // emit a load from SPReg to a virt reg to obtain the return address
-  unsigned RetAddr = MRI.createVirtualRegister(PointerRC);
-
-  // TODO: would emitting a virt <- COPY phys instruction and loading from the virt reg
-  // allow for better codegen?
-
+  // QUESTION: would emitting a "virt <- COPY phys" instruction and 
+  // then loading off of the virt reg allow for better codegen?
+  // The code for that follows:
   // unsigned SPasVReg = MRI.createVirtualRegister(PointerRC);
   // BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(TargetOpcode::COPY), SPasVReg)
   //   .addReg(SPReg.getReg());
 
+  // emit a load from SPReg to a virt reg to obtain the return address
+  unsigned RetAddr = MRI.createVirtualRegister(PointerRC);
   BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(X86::MOV64rm), RetAddr)
     .addReg(SPReg.getReg())
     .addImm(1)
@@ -26630,7 +26629,7 @@ X86TargetLowering::EmitCPSRet(MachineInstr &MI,
   // finally, delete the CPSRET
   MI.eraseFromParent();
 
-  MF->dump();
+  MF->dump(); // TODO remove later
 
   return MBB;
 }
