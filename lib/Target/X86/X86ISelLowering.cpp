@@ -26993,9 +26993,13 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     return BB;
   }
   case X86::CPSCALLdi64:
-  case X86::CPSCALLri64:
-  case X86::CPSCALLmi64:
     return EmitCPSCall(MI, BB);
+
+  case X86::CPSCALLri64:
+    report_fatal_error("CPSCALLri64 was encountered!");
+
+  case X86::CPSCALLmi64:
+    report_fatal_error("CPSCALLmi64 is unhandled at this time.");
 
   case X86::CPSRET:
     return EmitCPSRet(MI, BB);

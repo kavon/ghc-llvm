@@ -1085,11 +1085,12 @@ def : Pat<(X86call (i64 texternalsym:$dst)),
           (CALL64pcrel32 texternalsym:$dst)>;
 
 // More specific CPS pseudo-instr patterns.
-// TODO(kavon): does this also cover indirect calls?
 def : Pat<(X86cps_call (i64 tglobaladdr:$dst)),
           (CPSCALLdi64 tglobaladdr:$dst)>;
 def : Pat<(X86cps_call (i64 texternalsym:$dst)),
           (CPSCALLdi64 texternalsym:$dst)>;
+def : Pat<(X86cps_call (i64 ptr_rc_tailcall:$dst)),
+          (CPSCALLri64 ptr_rc_tailcall:$dst)>;
 
 // Tailcall stuff. The TCRETURN instructions execute after the epilog, so they
 // can never use callee-saved registers. That is the purpose of the GR64_TC
