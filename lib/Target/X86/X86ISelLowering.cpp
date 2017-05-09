@@ -26389,10 +26389,9 @@ MachineBasicBlock *
 X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                MachineBasicBlock *MBB) const {
 
-  // Store the continuation of metadata searches. The use of this map
-  // relies on the fact that CPS function call-sites within a block cannot
-  // be reordered.
-  static DenseMap<const BasicBlock*, BasicBlock::const_iterator> MetadataSearch;
+  // When splitting a MBB, we keep track of the earliest position in the original
+  // BasicBlock where the associated metadata on the IR instr can be found.
+  static DenseMap<MachineBasicBlock*, std::pair<BasicBlock::const_iterator,BasicBlock::const_iterator>> MetadataSearch;
 
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
@@ -26403,7 +26402,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   const unsigned NoRegister = 0; // Guaranteed to be the NoRegister value for
                                  // all targets.
   DebugLoc DL; // debug loc is irrelevant
-
 
   /////////////
   // -- Prepare to split the block apart --
@@ -26515,18 +26513,25 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // Fetch from the metadata of this call to get the name 
   // to get the EH Label we will add to retPt to aid the mangler.
 
-  MF->dump();
-
   MDNode* md = nullptr;
   { // new scope
     bool FoundCall = false;
-    const BasicBlock* BB = MBB->getBasicBlock();
 
-    BasicBlock::const_iterator END = BB->end();
-    BasicBlock::const_iterator II = BB->begin();
+    if (MetadataSearch.count(MBB) == 0) {
+      const BasicBlock* BB = MBB->getBasicBlock();
 
-    if (MetadataSearch.count(BB))
-      II = MetadataSearch[BB];  // Continue where we left off in this block.
+      // this can only fail if at some point between lowering the IR
+      // and getting to this point during expand-isel-pseudos, a fresh 
+      // MBB with a CPS call was introduced.
+      if (BB == nullptr)
+        report_fatal_error("MBB containing CPS call has no corresponding BB");
+
+      MetadataSearch[MBB] = std::make_pair(BB->begin(), BB->end());
+    }
+
+    auto iterPair = MetadataSearch[MBB];
+    BasicBlock::const_iterator II = iterPair.first;
+    BasicBlock::const_iterator END = iterPair.second;
 
     while (II != END && !FoundCall) {
       if (II->getOpcode() == Instruction::Call) {
@@ -26536,16 +26541,19 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
       }
       II++;
     }
-    // the metadata is not optional right now.
-    if (!FoundCall) {
-      BB->dump();
-      report_fatal_error("at least one CPS call is missing cps.retpt metadata in the above block.");
-    }
 
-    MetadataSearch[BB] = II;
+    // the metadata is not optional right now.
+    if (!FoundCall)
+      report_fatal_error("at least one CPS call is missing cps.retpt metadata.");
+
+    // We have consumed the metadata for the CPSCALL in MBB, and anything
+    // following that CPSCALL is now in retPt, so we forward the II and END
+    // using the map
+    MetadataSearch[retPt] = std::make_pair(II, END);
+
   } // end scope
 
-  // obtain the name
+  // obtain the label name now that we have MD
   if (md->getNumOperands() != 1)
     report_fatal_error("must have only one argument to cps.retpt metadata.");
 
@@ -26555,7 +26563,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   if (mdStr == nullptr)
     report_fatal_error("argument to cps.retpt metadata must be a string.");
 
-  // stick a label at the top of the retpt
+  // insert a label at the top of the retpt
   MCSymbol *Label = MF->getContext().createTempSymbol(mdStr->getString(), true, false);
   BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
  
@@ -26614,6 +26622,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // finally, delete the CPSCALL
   MI.eraseFromParent();
+
+  MF->dump();
 
   // expand-isel-pseudos should continue on by scanning
   // retpt.
