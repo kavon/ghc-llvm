@@ -26511,8 +26511,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
 
   //////
-  // Fetch from the metadata of this call to get the name 
-  // to get the EH Label we will add to retPt to aid the mangler.
+  // Fetch the metadata of this call to get information about
+  // the return point.
 
   MDNode* md = nullptr;
   { // new scope
@@ -26555,17 +26555,30 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   } // end scope
 
   // obtain the label name now that we have MD
-  if (md->getNumOperands() != 1)
-    report_fatal_error("must have only one argument to cps.retpt metadata.");
+  if (md->getNumOperands() != 2)
+    report_fatal_error("must have only two arguments to cps.retpt metadata.");
 
   Metadata* mdVal = md->getOperand(0).get();
-  MDString* mdStr = dyn_cast<MDString>(mdVal);
+  MDString* mdName = dyn_cast<MDString>(mdVal);
 
-  if (mdStr == nullptr)
-    report_fatal_error("argument to cps.retpt metadata must be a string.");
+  if (mdName == nullptr)
+    report_fatal_error("first argument to cps.retpt metadata must be a string name.");
+
+  // TODO: probably cleaner to expect an int offset instead of a string, but it's not
+  // clear from the Metadata API how to access int constant metadata.
+
+  mdVal = md->getOperand(1).get();
+  MDString* mdOffset = dyn_cast<MDString>(mdVal);
+
+  if (mdOffset == nullptr)
+    report_fatal_error("second argument to cps.retpt metadata must be a string containing an int offset.");
+
+  APInt offset;
+  if (mdOffset->getString().getAsInteger(0, offset))
+    report_fatal_error("second argument to cps.retpt is not parsable as an integer offset!");
 
   // insert a label at the top of the retpt
-  MCSymbol *Label = MF->getContext().createTempSymbol(mdStr->getString(), true, false);
+  MCSymbol *Label = MF->getContext().createTempSymbol(mdName->getString(), true, false);
   BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
  
 
@@ -26592,7 +26605,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(SPReg.getReg()) // dest
     .addImm(1)
     .addReg(NoRegister)
-    .addImm(0)
+    .addImm(offset.getSExtValue())    // byte offset from SPReg to store value
     .addReg(NoRegister)
     .addReg(RetAddr, RegState::Kill)
     ;
