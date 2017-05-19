@@ -1,4 +1,4 @@
-//===-- llvm/Instructions.h - Instruction subclass definitions --*- C++ -*-===//
+//===- llvm/Instructions.h - Instruction subclass definitions ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,6 +17,7 @@
 #define LLVM_IR_INSTRUCTIONS_H
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,21 +25,25 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Use.h"
 #include "llvm/IR/User.h"
+#include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 namespace llvm {
 
@@ -83,9 +88,6 @@ public:
              const Twine &Name = "", Instruction *InsertBefore = nullptr);
   AllocaInst(Type *Ty, unsigned AddrSpace, Value *ArraySize, unsigned Align,
              const Twine &Name, BasicBlock *InsertAtEnd);
-
-  // Out of line virtual method, so the vtable, etc. has a home.
-  ~AllocaInst() override;
 
   /// Return true if there is an allocation size parameter to the allocation
   /// instruction that is not 1.
@@ -264,6 +266,7 @@ public:
   }
 
   bool isSimple() const { return !isAtomic() && !isVolatile(); }
+
   bool isUnordered() const {
     return (getOrdering() == AtomicOrdering::NotAtomic ||
             getOrdering() == AtomicOrdering::Unordered) &&
@@ -273,10 +276,11 @@ public:
   Value *getPointerOperand() { return getOperand(0); }
   const Value *getPointerOperand() const { return getOperand(0); }
   static unsigned getPointerOperandIndex() { return 0U; }
+  Type *getPointerOperandType() const { return getPointerOperand()->getType(); }
 
   /// Returns the address space of the pointer operand.
   unsigned getPointerAddressSpace() const {
-    return getPointerOperand()->getType()->getPointerAddressSpace();
+    return getPointerOperandType()->getPointerAddressSpace();
   }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -385,6 +389,7 @@ public:
   }
 
   bool isSimple() const { return !isAtomic() && !isVolatile(); }
+
   bool isUnordered() const {
     return (getOrdering() == AtomicOrdering::NotAtomic ||
             getOrdering() == AtomicOrdering::Unordered) &&
@@ -397,10 +402,11 @@ public:
   Value *getPointerOperand() { return getOperand(1); }
   const Value *getPointerOperand() const { return getOperand(1); }
   static unsigned getPointerOperandIndex() { return 1U; }
+  Type *getPointerOperandType() const { return getPointerOperand()->getType(); }
 
   /// Returns the address space of the pointer operand.
   unsigned getPointerAddressSpace() const {
-    return getPointerOperand()->getType()->getPointerAddressSpace();
+    return getPointerOperandType()->getPointerAddressSpace();
   }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -834,10 +840,7 @@ class GetElementPtrInst : public Instruction {
   Type *SourceElementType;
   Type *ResultElementType;
 
-  void anchor() override;
-
   GetElementPtrInst(const GetElementPtrInst &GEPI);
-  void init(Value *Ptr, ArrayRef<Value *> IdxList, const Twine &NameStr);
 
   /// Constructors - Create a getelementptr instruction with a base pointer an
   /// list of indices. The first ctor can optionally insert before an existing
@@ -849,6 +852,8 @@ class GetElementPtrInst : public Instruction {
   inline GetElementPtrInst(Type *PointeeType, Value *Ptr,
                            ArrayRef<Value *> IdxList, unsigned Values,
                            const Twine &NameStr, BasicBlock *InsertAtEnd);
+
+  void init(Value *Ptr, ArrayRef<Value *> IdxList, const Twine &NameStr);
 
 protected:
   // Note: Instruction needs to be a friend here to call cloneImpl.
@@ -1103,8 +1108,6 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(GetElementPtrInst, Value)
 /// must be identical types.
 /// Represent an integer comparison operator.
 class ICmpInst: public CmpInst {
-  void anchor() override;
-
   void AssertOK() {
     assert(getPredicate() >= CmpInst::FIRST_ICMP_PREDICATE &&
            getPredicate() <= CmpInst::LAST_ICMP_PREDICATE &&
@@ -1417,8 +1420,6 @@ protected:
   CallInst *cloneImpl() const;
 
 public:
-  ~CallInst() override;
-
   static CallInst *Create(Value *Func, ArrayRef<Value *> Args,
                           ArrayRef<OperandBundleDef> Bundles = None,
                           const Twine &NameStr = "",
@@ -1656,11 +1657,17 @@ public:
   /// adds the attribute to the list of attributes.
   void addAttribute(unsigned i, Attribute Attr);
 
+  /// Adds the attribute to the indicated argument
+  void addParamAttr(unsigned ArgNo, Attribute::AttrKind Kind);
+
   /// removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attribute::AttrKind Kind);
 
   /// removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, StringRef Kind);
+
+  /// Removes the attribute from the given argument
+  void removeParamAttr(unsigned ArgNo, Attribute::AttrKind Kind);
 
   /// adds the dereferenceable attribute to the list of attributes.
   void addDereferenceableAttr(unsigned i, uint64_t Bytes);
@@ -1681,8 +1688,11 @@ public:
     return hasFnAttrImpl(Kind);
   }
 
-  /// Determine whether the call or the callee has the given attributes.
-  bool paramHasAttr(unsigned i, Attribute::AttrKind Kind) const;
+  /// Determine whether the return value has the given attribute.
+  bool hasRetAttr(Attribute::AttrKind Kind) const;
+
+  /// Determine whether the argument or parameter has the given attribute.
+  bool paramHasAttr(unsigned ArgNo, Attribute::AttrKind Kind) const;
 
   /// Get the attribute of a given kind at a position.
   Attribute getAttribute(unsigned i, Attribute::AttrKind Kind) const {
@@ -1709,9 +1719,12 @@ public:
   ///     (\p i - 1) in the operand list.
   bool dataOperandHasImpliedAttr(unsigned i, Attribute::AttrKind Kind) const;
 
+  /// Extract the alignment of the return value.
+  unsigned getRetAlignment() const { return Attrs.getRetAlignment(); }
+
   /// Extract the alignment for a call or parameter (0=unknown).
-  unsigned getParamAlignment(unsigned i) const {
-    return Attrs.getParamAlignment(i);
+  unsigned getParamAlignment(unsigned ArgNo) const {
+    return Attrs.getParamAlignment(ArgNo);
   }
 
   /// Extract the number of dereferenceable bytes for a call or
@@ -1726,11 +1739,9 @@ public:
     return Attrs.getDereferenceableOrNullBytes(i);
   }
 
-  /// @brief Determine if the parameter or return value is marked with NoAlias
-  /// attribute.
-  /// @param n The parameter to check. 1 is the first parameter, 0 is the return
-  bool doesNotAlias(unsigned n) const {
-    return Attrs.hasAttribute(n, Attribute::NoAlias);
+  /// @brief Determine if the return value is marked with NoAlias attribute.
+  bool returnDoesNotAlias() const {
+    return Attrs.hasAttribute(AttributeList::ReturnIndex, Attribute::NoAlias);
   }
 
   /// Return true if the call should not be treated as a call to a
@@ -1821,7 +1832,7 @@ public:
       return false;
 
     // Be friendly and also check the callee.
-    return paramHasAttr(1, Attribute::StructRet);
+    return paramHasAttr(0, Attribute::StructRet);
   }
 
   /// Determine if any call argument is an aggregate passed by value.
@@ -2249,6 +2260,19 @@ public:
     return Mask;
   }
 
+  /// Change values in a shuffle permute mask assuming the two vector operands
+  /// of length InVecNumElts have swapped position.
+  static void commuteShuffleMask(MutableArrayRef<int> Mask,
+                                 unsigned InVecNumElts) {
+    for (int &Idx : Mask) {
+      if (Idx == -1)
+        continue;
+      Idx = Idx < (int)InVecNumElts ? Idx + InVecNumElts : Idx - InVecNumElts;
+      assert(Idx >= 0 && Idx < (int)InVecNumElts * 2 &&
+             "shufflevector mask index out of range");
+    }
+  }
+
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const Instruction *I) {
     return I->getOpcode() == Instruction::ShuffleVector;
@@ -2276,6 +2300,7 @@ class ExtractValueInst : public UnaryInstruction {
   SmallVector<unsigned, 4> Indices;
 
   ExtractValueInst(const ExtractValueInst &EVI);
+
   /// Constructors - Create a extractvalue instruction with a base aggregate
   /// value and a list of indices.  The first ctor can optionally insert before
   /// an existing instruction, the second appends the new instruction to the
@@ -2321,7 +2346,8 @@ public:
   /// Null is returned if the indices are invalid for the specified type.
   static Type *getIndexedType(Type *Agg, ArrayRef<unsigned> Idxs);
 
-  typedef const unsigned* idx_iterator;
+  using idx_iterator = const unsigned*;
+
   inline idx_iterator idx_begin() const { return Indices.begin(); }
   inline idx_iterator idx_end()   const { return Indices.end(); }
   inline iterator_range<idx_iterator> indices() const {
@@ -2443,7 +2469,8 @@ public:
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
-  typedef const unsigned* idx_iterator;
+  using idx_iterator = const unsigned*;
+
   inline idx_iterator idx_begin() const { return Indices.begin(); }
   inline idx_iterator idx_end()   const { return Indices.end(); }
   inline iterator_range<idx_iterator> indices() const {
@@ -2557,8 +2584,6 @@ class PHINode : public Instruction {
     return User::operator new(s);
   }
 
-  void anchor() override;
-
 protected:
   // Note: Instruction needs to be a friend here to call cloneImpl.
   friend class Instruction;
@@ -2594,8 +2619,8 @@ public:
   // Block iterator interface. This provides access to the list of incoming
   // basic blocks, which parallels the list of incoming values.
 
-  typedef BasicBlock **block_iterator;
-  typedef BasicBlock * const *const_block_iterator;
+  using block_iterator = BasicBlock **;
+  using const_block_iterator = BasicBlock * const *;
 
   block_iterator block_begin() {
     Use::UserRef *ref =
@@ -2644,9 +2669,11 @@ public:
            "All operands to PHI node must be the same type as the PHI node!");
     setOperand(i, V);
   }
+
   static unsigned getOperandNumForIncomingValue(unsigned i) {
     return i;
   }
+
   static unsigned getIncomingValueNumForOperand(unsigned i) {
     return i;
   }
@@ -2890,8 +2917,6 @@ protected:
   ReturnInst *cloneImpl() const;
 
 public:
-  ~ReturnInst() override;
-
   static ReturnInst* Create(LLVMContext &C, Value *retVal = nullptr,
                             Instruction *InsertBefore = nullptr) {
     return new(!!retVal) ReturnInst(C, retVal, InsertBefore);
@@ -2925,9 +2950,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 template <>
@@ -3035,9 +3062,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 template <>
@@ -3096,49 +3125,39 @@ public:
   // -2
   static const unsigned DefaultPseudoIndex = static_cast<unsigned>(~0L-1);
 
-  template <class SwitchInstT, class ConstantIntT, class BasicBlockT>
-  class CaseIteratorT
-      : public iterator_facade_base<
-            CaseIteratorT<SwitchInstT, ConstantIntT, BasicBlockT>,
-            std::random_access_iterator_tag,
-            CaseIteratorT<SwitchInstT, ConstantIntT, BasicBlockT>> {
+  template <typename CaseHandleT> class CaseIteratorImpl;
+
+  /// A handle to a particular switch case. It exposes a convenient interface
+  /// to both the case value and the successor block.
+  ///
+  /// We define this as a template and instantiate it to form both a const and
+  /// non-const handle.
+  template <typename SwitchInstT, typename ConstantIntT, typename BasicBlockT>
+  class CaseHandleImpl {
+    // Directly befriend both const and non-const iterators.
+    friend class SwitchInst::CaseIteratorImpl<
+        CaseHandleImpl<SwitchInstT, ConstantIntT, BasicBlockT>>;
+
   protected:
+    // Expose the switch type we're parameterized with to the iterator.
+    using SwitchInstType = SwitchInstT;
+
     SwitchInstT *SI;
     ptrdiff_t Index;
 
+    CaseHandleImpl() = default;
+    CaseHandleImpl(SwitchInstT *SI, ptrdiff_t Index) : SI(SI), Index(Index) {}
+
   public:
-    typedef CaseIteratorT<SwitchInstT, ConstantIntT, BasicBlockT> Self;
-
-    /// Default constructed iterator is in an invalid state until assigned to
-    /// a case for a particular switch.
-    CaseIteratorT() : SI(nullptr) {}
-
-    /// Initializes case iterator for given SwitchInst and for given
-    /// case number.
-    CaseIteratorT(SwitchInstT *SI, unsigned CaseNum) {
-      this->SI = SI;
-      Index = CaseNum;
-    }
-
-    /// Initializes case iterator for given SwitchInst and for given
-    /// TerminatorInst's successor index.
-    static Self fromSuccessorIndex(SwitchInstT *SI, unsigned SuccessorIndex) {
-      assert(SuccessorIndex < SI->getNumSuccessors() &&
-             "Successor index # out of range!");
-      return SuccessorIndex != 0 ?
-             Self(SI, SuccessorIndex - 1) :
-             Self(SI, DefaultPseudoIndex);
-    }
-
     /// Resolves case value for current case.
-    ConstantIntT *getCaseValue() {
+    ConstantIntT *getCaseValue() const {
       assert((unsigned)Index < SI->getNumCases() &&
              "Index out the number of cases.");
       return reinterpret_cast<ConstantIntT *>(SI->getOperand(2 + Index * 2));
     }
 
     /// Resolves successor for current case.
-    BasicBlockT *getCaseSuccessor() {
+    BasicBlockT *getCaseSuccessor() const {
       assert(((unsigned)Index < SI->getNumCases() ||
               (unsigned)Index == DefaultPseudoIndex) &&
              "Index out the number of cases.");
@@ -3156,43 +3175,21 @@ public:
       return (unsigned)Index != DefaultPseudoIndex ? Index + 1 : 0;
     }
 
-    Self &operator+=(ptrdiff_t N) {
-      // Check index correctness after addition.
-      // Note: Index == getNumCases() means end().
-      assert(Index + N >= 0 && (unsigned)(Index + N) <= SI->getNumCases() &&
-             "Index out the number of cases.");
-      Index += N;
-      return *this;
-    }
-    Self &operator-=(ptrdiff_t N) {
-      // Check index correctness after subtraction.
-      // Note: Index == getNumCases() means end().
-      assert(Index - N >= 0 && (unsigned)(Index - N) <= SI->getNumCases() &&
-             "Index out the number of cases.");
-      Index -= N;
-      return *this;
-    }
-    bool operator==(const Self& RHS) const {
+    bool operator==(const CaseHandleImpl &RHS) const {
       assert(SI == RHS.SI && "Incompatible operators.");
       return Index == RHS.Index;
     }
-    bool operator<(const Self& RHS) const {
-      assert(SI == RHS.SI && "Incompatible operators.");
-      return Index < RHS.Index;
-    }
-    Self &operator*() { return *this; }
-    const Self &operator*() const { return *this; }
   };
 
-  typedef CaseIteratorT<const SwitchInst, const ConstantInt, const BasicBlock>
-    ConstCaseIt;
+  using ConstCaseHandle =
+      CaseHandleImpl<const SwitchInst, const ConstantInt, const BasicBlock>;
 
-  class CaseIt : public CaseIteratorT<SwitchInst, ConstantInt, BasicBlock> {
-    typedef CaseIteratorT<SwitchInst, ConstantInt, BasicBlock> ParentTy;
+  class CaseHandle
+      : public CaseHandleImpl<SwitchInst, ConstantInt, BasicBlock> {
+    friend class SwitchInst::CaseIteratorImpl<CaseHandle>;
 
   public:
-    CaseIt(const ParentTy &Src) : ParentTy(Src) {}
-    CaseIt(SwitchInst *SI, unsigned CaseNum) : ParentTy(SI, CaseNum) {}
+    CaseHandle(SwitchInst *SI, ptrdiff_t Index) : CaseHandleImpl(SI, Index) {}
 
     /// Sets the new value for current case.
     void setValue(ConstantInt *V) {
@@ -3206,6 +3203,76 @@ public:
       SI->setSuccessor(getSuccessorIndex(), S);
     }
   };
+
+  template <typename CaseHandleT>
+  class CaseIteratorImpl
+      : public iterator_facade_base<CaseIteratorImpl<CaseHandleT>,
+                                    std::random_access_iterator_tag,
+                                    CaseHandleT> {
+    using SwitchInstT = typename CaseHandleT::SwitchInstType;
+
+    CaseHandleT Case;
+
+  public:
+    /// Default constructed iterator is in an invalid state until assigned to
+    /// a case for a particular switch.
+    CaseIteratorImpl() = default;
+
+    /// Initializes case iterator for given SwitchInst and for given
+    /// case number.
+    CaseIteratorImpl(SwitchInstT *SI, unsigned CaseNum) : Case(SI, CaseNum) {}
+
+    /// Initializes case iterator for given SwitchInst and for given
+    /// TerminatorInst's successor index.
+    static CaseIteratorImpl fromSuccessorIndex(SwitchInstT *SI,
+                                               unsigned SuccessorIndex) {
+      assert(SuccessorIndex < SI->getNumSuccessors() &&
+             "Successor index # out of range!");
+      return SuccessorIndex != 0 ? CaseIteratorImpl(SI, SuccessorIndex - 1)
+                                 : CaseIteratorImpl(SI, DefaultPseudoIndex);
+    }
+
+    /// Support converting to the const variant. This will be a no-op for const
+    /// variant.
+    operator CaseIteratorImpl<ConstCaseHandle>() const {
+      return CaseIteratorImpl<ConstCaseHandle>(Case.SI, Case.Index);
+    }
+
+    CaseIteratorImpl &operator+=(ptrdiff_t N) {
+      // Check index correctness after addition.
+      // Note: Index == getNumCases() means end().
+      assert(Case.Index + N >= 0 &&
+             (unsigned)(Case.Index + N) <= Case.SI->getNumCases() &&
+             "Case.Index out the number of cases.");
+      Case.Index += N;
+      return *this;
+    }
+    CaseIteratorImpl &operator-=(ptrdiff_t N) {
+      // Check index correctness after subtraction.
+      // Note: Case.Index == getNumCases() means end().
+      assert(Case.Index - N >= 0 &&
+             (unsigned)(Case.Index - N) <= Case.SI->getNumCases() &&
+             "Case.Index out the number of cases.");
+      Case.Index -= N;
+      return *this;
+    }
+    ptrdiff_t operator-(const CaseIteratorImpl &RHS) const {
+      assert(Case.SI == RHS.Case.SI && "Incompatible operators.");
+      return Case.Index - RHS.Case.Index;
+    }
+    bool operator==(const CaseIteratorImpl &RHS) const {
+      return Case == RHS.Case;
+    }
+    bool operator<(const CaseIteratorImpl &RHS) const {
+      assert(Case.SI == RHS.Case.SI && "Incompatible operators.");
+      return Case.Index < RHS.Case.Index;
+    }
+    CaseHandleT &operator*() { return Case; }
+    const CaseHandleT &operator*() const { return Case; }
+  };
+
+  using CaseIt = CaseIteratorImpl<CaseHandle>;
+  using ConstCaseIt = CaseIteratorImpl<ConstCaseHandle>;
 
   static SwitchInst *Create(Value *Value, BasicBlock *Default,
                             unsigned NumCases,
@@ -3290,30 +3357,40 @@ public:
   /// default case iterator to indicate that it is handled by the default
   /// handler.
   CaseIt findCaseValue(const ConstantInt *C) {
-    for (CaseIt i = case_begin(), e = case_end(); i != e; ++i)
-      if (i.getCaseValue() == C)
-        return i;
+    CaseIt I = llvm::find_if(
+        cases(), [C](CaseHandle &Case) { return Case.getCaseValue() == C; });
+    if (I != case_end())
+      return I;
+
     return case_default();
   }
   ConstCaseIt findCaseValue(const ConstantInt *C) const {
-    for (ConstCaseIt i = case_begin(), e = case_end(); i != e; ++i)
-      if (i.getCaseValue() == C)
-        return i;
+    ConstCaseIt I = llvm::find_if(cases(), [C](ConstCaseHandle &Case) {
+      return Case.getCaseValue() == C;
+    });
+    if (I != case_end())
+      return I;
+
     return case_default();
   }
 
   /// Finds the unique case value for a given successor. Returns null if the
   /// successor is not found, not unique, or is the default case.
   ConstantInt *findCaseDest(BasicBlock *BB) {
-    if (BB == getDefaultDest()) return nullptr;
+    if (BB == getDefaultDest())
+      return nullptr;
 
     ConstantInt *CI = nullptr;
-    for (CaseIt i = case_begin(), e = case_end(); i != e; ++i) {
-      if (i.getCaseSuccessor() == BB) {
-        if (CI) return nullptr;   // Multiple cases lead to BB.
-        else CI = i.getCaseValue();
-      }
+    for (auto Case : cases()) {
+      if (Case.getCaseSuccessor() != BB)
+        continue;
+
+      if (CI)
+        return nullptr; // Multiple cases lead to BB.
+
+      CI = Case.getCaseValue();
     }
+
     return CI;
   }
 
@@ -3330,7 +3407,7 @@ public:
   /// This action invalidates iterators for all cases following the one removed,
   /// including the case_end() iterator. It returns an iterator for the next
   /// case.
-  CaseIt removeCase(CaseIt i);
+  CaseIt removeCase(CaseIt I);
 
   unsigned getNumSuccessors() const { return getNumOperands()/2; }
   BasicBlock *getSuccessor(unsigned idx) const {
@@ -3351,9 +3428,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 template <>
@@ -3456,9 +3535,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 template <>
@@ -3579,6 +3660,7 @@ public:
     return new (Values) InvokeInst(Func, IfNormal, IfException, Args, None,
                                    Values, NameStr, InsertAtEnd);
   }
+
   static InvokeInst *Create(Value *Func, BasicBlock *IfNormal,
                             BasicBlock *IfException, ArrayRef<Value *> Args,
                             ArrayRef<OperandBundleDef> Bundles,
@@ -3694,11 +3776,17 @@ public:
   /// adds the attribute to the list of attributes.
   void addAttribute(unsigned i, Attribute Attr);
 
+  /// Adds the attribute to the indicated argument
+  void addParamAttr(unsigned ArgNo, Attribute::AttrKind Kind);
+
   /// removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attribute::AttrKind Kind);
 
   /// removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, StringRef Kind);
+
+  /// Removes the attribute from the given argument
+  void removeParamAttr(unsigned ArgNo, Attribute::AttrKind Kind);
 
   /// adds the dereferenceable attribute to the list of attributes.
   void addDereferenceableAttr(unsigned i, uint64_t Bytes);
@@ -3719,8 +3807,11 @@ public:
     return hasFnAttrImpl(Kind);
   }
 
-  /// Determine whether the call or the callee has the given attributes.
-  bool paramHasAttr(unsigned i, Attribute::AttrKind Kind) const;
+  /// Determine whether the return value has the given attribute.
+  bool hasRetAttr(Attribute::AttrKind Kind) const;
+
+  /// Determine whether the argument or parameter has the given attribute.
+  bool paramHasAttr(unsigned ArgNo, Attribute::AttrKind Kind) const;
 
   /// Get the attribute of a given kind at a position.
   Attribute getAttribute(unsigned i, Attribute::AttrKind Kind) const {
@@ -3748,9 +3839,12 @@ public:
   ///     (\p i - 1) in the operand list.
   bool dataOperandHasImpliedAttr(unsigned i, Attribute::AttrKind Kind) const;
 
+  /// Extract the alignment of the return value.
+  unsigned getRetAlignment() const { return Attrs.getRetAlignment(); }
+
   /// Extract the alignment for a call or parameter (0=unknown).
-  unsigned getParamAlignment(unsigned i) const {
-    return Attrs.getParamAlignment(i);
+  unsigned getParamAlignment(unsigned ArgNo) const {
+    return Attrs.getParamAlignment(ArgNo);
   }
 
   /// Extract the number of dereferenceable bytes for a call or
@@ -3765,11 +3859,9 @@ public:
     return Attrs.getDereferenceableOrNullBytes(i);
   }
 
-  /// @brief Determine if the parameter or return value is marked with NoAlias
-  /// attribute.
-  /// @param n The parameter to check. 1 is the first parameter, 0 is the return
-  bool doesNotAlias(unsigned n) const {
-    return Attrs.hasAttribute(n, Attribute::NoAlias);
+  /// @brief Determine if the return value is marked with NoAlias attribute.
+  bool returnDoesNotAlias() const {
+    return Attrs.hasAttribute(AttributeList::ReturnIndex, Attribute::NoAlias);
   }
 
   /// Return true if the call should not be treated as a call to a
@@ -3854,7 +3946,7 @@ public:
       return false;
 
     // Be friendly and also check the callee.
-    return paramHasAttr(1, Attribute::StructRet);
+    return paramHasAttr(0, Attribute::StructRet);
   }
 
   /// Determine if any call argument is an aggregate passed by value.
@@ -3926,9 +4018,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 
   template <typename AttrKind> bool hasFnAttrImpl(AttrKind Kind) const {
     if (Attrs.hasAttribute(AttributeList::FunctionIndex, Kind))
@@ -4025,9 +4119,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 template <>
@@ -4132,13 +4228,14 @@ private:
   }
 
 public:
-  typedef std::pointer_to_unary_function<Value *, BasicBlock *> DerefFnTy;
-  typedef mapped_iterator<op_iterator, DerefFnTy> handler_iterator;
-  typedef iterator_range<handler_iterator> handler_range;
-  typedef std::pointer_to_unary_function<const Value *, const BasicBlock *>
-      ConstDerefFnTy;
-  typedef mapped_iterator<const_op_iterator, ConstDerefFnTy> const_handler_iterator;
-  typedef iterator_range<const_handler_iterator> const_handler_range;
+  using DerefFnTy = std::pointer_to_unary_function<Value *, BasicBlock *>;
+  using handler_iterator = mapped_iterator<op_iterator, DerefFnTy>;
+  using handler_range = iterator_range<handler_iterator>;
+  using ConstDerefFnTy =
+      std::pointer_to_unary_function<const Value *, const BasicBlock *>;
+  using const_handler_iterator =
+      mapped_iterator<const_op_iterator, ConstDerefFnTy>;
+  using const_handler_range = iterator_range<const_handler_iterator>;
 
   /// Returns an iterator that points to the first handler in CatchSwitchInst.
   handler_iterator handler_begin() {
@@ -4208,9 +4305,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned Idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned Idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned Idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned Idx, BasicBlock *B);
 };
 
 template <>
@@ -4373,9 +4472,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned Idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned Idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned Idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned Idx, BasicBlock *B);
 };
 
 template <>
@@ -4461,9 +4562,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned Idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned Idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned Idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned Idx, BasicBlock *B);
 
   // Shadow Instruction::setInstructionSubclassData with a private forwarding
   // method so that subclasses cannot accidentally use it.
@@ -4516,9 +4619,11 @@ public:
   }
 
 private:
-  BasicBlock *getSuccessorV(unsigned idx) const override;
-  unsigned getNumSuccessorsV() const override;
-  void setSuccessorV(unsigned idx, BasicBlock *B) override;
+  friend TerminatorInst;
+
+  BasicBlock *getSuccessorV(unsigned idx) const;
+  unsigned getNumSuccessorsV() const;
+  void setSuccessorV(unsigned idx, BasicBlock *B);
 };
 
 //===----------------------------------------------------------------------===//

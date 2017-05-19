@@ -23,6 +23,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
@@ -38,7 +39,6 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -71,7 +71,6 @@ private:
   const TargetMachine *TM;
   Module *Mod = nullptr;
   const DataLayout *DL = nullptr;
-  MDNode *MaxWorkGroupSizeRange = nullptr;
   AMDGPUAS AS;
 
   // FIXME: This should be per-kernel.
@@ -101,8 +100,7 @@ private:
 public:
   static char ID;
 
-  AMDGPUPromoteAlloca(const TargetMachine *TM_ = nullptr) :
-    FunctionPass(ID), TM(TM_) {}
+  AMDGPUPromoteAlloca() : FunctionPass(ID) {}
 
   bool doInitialization(Module &M) override;
   bool runOnFunction(Function &F) override;
@@ -121,36 +119,30 @@ public:
 
 char AMDGPUPromoteAlloca::ID = 0;
 
-INITIALIZE_TM_PASS(AMDGPUPromoteAlloca, DEBUG_TYPE,
-                   "AMDGPU promote alloca to vector or LDS", false, false)
+INITIALIZE_PASS(AMDGPUPromoteAlloca, DEBUG_TYPE,
+                "AMDGPU promote alloca to vector or LDS", false, false)
 
 char &llvm::AMDGPUPromoteAllocaID = AMDGPUPromoteAlloca::ID;
 
 bool AMDGPUPromoteAlloca::doInitialization(Module &M) {
-  if (!TM)
-    return false;
-
   Mod = &M;
   DL = &Mod->getDataLayout();
-
-  // The maximum workitem id.
-  //
-  // FIXME: Should get as subtarget property. Usually runtime enforced max is
-  // 256.
-  MDBuilder MDB(Mod->getContext());
-  MaxWorkGroupSizeRange = MDB.createRange(APInt(32, 0), APInt(32, 2048));
-
-  const Triple &TT = TM->getTargetTriple();
-
-  IsAMDGCN = TT.getArch() == Triple::amdgcn;
-  IsAMDHSA = TT.getOS() == Triple::AMDHSA;
 
   return false;
 }
 
 bool AMDGPUPromoteAlloca::runOnFunction(Function &F) {
-  if (!TM || skipFunction(F))
+  if (skipFunction(F))
     return false;
+
+  if (auto *TPC = getAnalysisIfAvailable<TargetPassConfig>())
+    TM = &TPC->getTM<TargetMachine>();
+  else
+    return false;
+
+  const Triple &TT = TM->getTargetTriple();
+  IsAMDGCN = TT.getArch() == Triple::amdgcn;
+  IsAMDHSA = TT.getOS() == Triple::AMDHSA;
 
   const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>(F);
   if (!ST.isPromoteAllocaEnabled())
@@ -258,6 +250,9 @@ bool AMDGPUPromoteAlloca::runOnFunction(Function &F) {
 
 std::pair<Value *, Value *>
 AMDGPUPromoteAlloca::getLocalSizeYZ(IRBuilder<> &Builder) {
+  const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>(
+                                *Builder.GetInsertBlock()->getParent());
+
   if (!IsAMDHSA) {
     Function *LocalSizeYFn
       = Intrinsic::getDeclaration(Mod, Intrinsic::r600_read_local_size_y);
@@ -267,8 +262,8 @@ AMDGPUPromoteAlloca::getLocalSizeYZ(IRBuilder<> &Builder) {
     CallInst *LocalSizeY = Builder.CreateCall(LocalSizeYFn, {});
     CallInst *LocalSizeZ = Builder.CreateCall(LocalSizeZFn, {});
 
-    LocalSizeY->setMetadata(LLVMContext::MD_range, MaxWorkGroupSizeRange);
-    LocalSizeZ->setMetadata(LLVMContext::MD_range, MaxWorkGroupSizeRange);
+    ST.makeLIDRangeMetadata(LocalSizeY);
+    ST.makeLIDRangeMetadata(LocalSizeZ);
 
     return std::make_pair(LocalSizeY, LocalSizeZ);
   }
@@ -333,7 +328,7 @@ AMDGPUPromoteAlloca::getLocalSizeYZ(IRBuilder<> &Builder) {
   MDNode *MD = MDNode::get(Mod->getContext(), None);
   LoadXY->setMetadata(LLVMContext::MD_invariant_load, MD);
   LoadZU->setMetadata(LLVMContext::MD_invariant_load, MD);
-  LoadZU->setMetadata(LLVMContext::MD_range, MaxWorkGroupSizeRange);
+  ST.makeLIDRangeMetadata(LoadZU);
 
   // Extract y component. Upper half of LoadZU should be zero already.
   Value *Y = Builder.CreateLShr(LoadXY, 16);
@@ -342,6 +337,8 @@ AMDGPUPromoteAlloca::getLocalSizeYZ(IRBuilder<> &Builder) {
 }
 
 Value *AMDGPUPromoteAlloca::getWorkitemID(IRBuilder<> &Builder, unsigned N) {
+  const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>(
+                                *Builder.GetInsertBlock()->getParent());
   Intrinsic::ID IntrID = Intrinsic::ID::not_intrinsic;
 
   switch (N) {
@@ -364,7 +361,7 @@ Value *AMDGPUPromoteAlloca::getWorkitemID(IRBuilder<> &Builder, unsigned N) {
 
   Function *WorkitemIdFn = Intrinsic::getDeclaration(Mod, IntrID);
   CallInst *CI = Builder.CreateCall(WorkitemIdFn);
-  CI->setMetadata(LLVMContext::MD_range, MaxWorkGroupSizeRange);
+  ST.makeLIDRangeMetadata(CI);
 
   return CI;
 }
@@ -401,14 +398,17 @@ static Value* GEPToVectorIndex(GetElementPtrInst *GEP) {
 // instructions.
 static bool canVectorizeInst(Instruction *Inst, User *User) {
   switch (Inst->getOpcode()) {
-  case Instruction::Load:
+  case Instruction::Load: {
+    LoadInst *LI = cast<LoadInst>(Inst);
+    return !LI->isVolatile();
+  }
   case Instruction::BitCast:
   case Instruction::AddrSpaceCast:
     return true;
   case Instruction::Store: {
     // Must be the stored pointer operand, not a stored value.
     StoreInst *SI = cast<StoreInst>(Inst);
-    return SI->getPointerOperand() == User;
+    return (SI->getPointerOperand() == User) && !SI->isVolatile();
   }
   default:
     return false;
@@ -681,17 +681,22 @@ void AMDGPUPromoteAlloca::handleAlloca(AllocaInst &I) {
   }
 
   const Function &ContainingFunction = *I.getParent()->getParent();
+  CallingConv::ID CC = ContainingFunction.getCallingConv();
 
   // Don't promote the alloca to LDS for shader calling conventions as the work
   // item ID intrinsics are not supported for these calling conventions.
   // Furthermore not all LDS is available for some of the stages.
-  if (AMDGPU::isShader(ContainingFunction.getCallingConv()))
+  switch (CC) {
+  case CallingConv::AMDGPU_KERNEL:
+  case CallingConv::SPIR_KERNEL:
+    break;
+  default:
+    DEBUG(dbgs() << " promote alloca to LDS not supported with calling convention.\n");
     return;
+  }
 
   const AMDGPUSubtarget &ST =
     TM->getSubtarget<AMDGPUSubtarget>(ContainingFunction);
-  // FIXME: We should also try to get this value from the reqd_work_group_size
-  // function attribute if it is available.
   unsigned WorkGroupSize = ST.getFlatWorkGroupSizes(ContainingFunction).second;
 
   const DataLayout &DL = Mod->getDataLayout();
@@ -870,6 +875,6 @@ void AMDGPUPromoteAlloca::handleAlloca(AllocaInst &I) {
   }
 }
 
-FunctionPass *llvm::createAMDGPUPromoteAlloca(const TargetMachine *TM) {
-  return new AMDGPUPromoteAlloca(TM);
+FunctionPass *llvm::createAMDGPUPromoteAlloca() {
+  return new AMDGPUPromoteAlloca();
 }

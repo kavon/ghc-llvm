@@ -145,6 +145,9 @@ protected:
   bool HasSDWA;
   bool HasDPP;
   bool FlatAddressSpace;
+  bool FlatInstOffsets;
+  bool FlatGlobalInsts;
+  bool FlatScratchInsts;
   bool R600ALUInst;
   bool CaymanISA;
   bool CFALUBug;
@@ -286,6 +289,10 @@ public:
     return getGeneration() >= GFX9;
   }
 
+  bool hasMin3Max3_16() const {
+    return getGeneration() >= GFX9;
+  }
+
   bool hasCARRY() const {
     return (getGeneration() >= EVERGREEN);
   }
@@ -380,6 +387,18 @@ public:
     return FlatAddressSpace;
   }
 
+  bool hasFlatInstOffsets() const {
+    return FlatInstOffsets;
+  }
+
+  bool hasFlatGlobalInsts() const {
+    return FlatGlobalInsts;
+  }
+
+  bool hasFlatScratchInsts() const {
+    return FlatScratchInsts;
+  }
+
   bool isMesaKernel(const MachineFunction &MF) const {
     return isMesa3DOS() && !AMDGPU::isShader(MF.getFunction()->getCallingConv());
   }
@@ -415,9 +434,11 @@ public:
     return 0;
   }
 
+  // Scratch is allocated in 256 dword per wave blocks for the entire
+  // wavefront. When viewed from the perspecive of an arbitrary workitem, this
+  // is 4-byte aligned.
   unsigned getStackAlignment() const {
-    // Scratch is allocated in 256 dword per wave blocks.
-    return 4 * 256 / getWavefrontSize();
+    return 4;
   }
 
   bool enableMachineScheduler() const override {
@@ -512,6 +533,9 @@ public:
   /// compatible with minimum/maximum number of waves limited by flat work group
   /// size, register usage, and/or lds usage.
   std::pair<unsigned, unsigned> getWavesPerEU(const Function &F) const;
+
+  /// Creates value range metadata on an workitemid.* inrinsic call or load.
+  bool makeLIDRangeMetadata(Instruction *I) const;
 };
 
 class R600Subtarget final : public AMDGPUSubtarget {

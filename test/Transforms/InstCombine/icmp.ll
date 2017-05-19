@@ -695,6 +695,21 @@ define i1 @test48(i32 %X, i32 %Y, i32 %Z) {
   ret i1 %C
 }
 
+; The above transform only works for equality predicates.
+
+define i1 @PR32949(i32 %X, i32 %Y, i32 %Z) {
+; CHECK-LABEL: @PR32949(
+; CHECK-NEXT:    [[A:%.*]] = sdiv exact i32 %X, %Z
+; CHECK-NEXT:    [[B:%.*]] = sdiv exact i32 %Y, %Z
+; CHECK-NEXT:    [[C:%.*]] = icmp sgt i32 [[A]], [[B]]
+; CHECK-NEXT:    ret i1 [[C]]
+;
+  %A = sdiv exact i32 %X, %Z
+  %B = sdiv exact i32 %Y, %Z
+  %C = icmp sgt i32 %A, %B
+  ret i1 %C
+}
+
 ; PR8469
 define <2 x i1> @test49(<2 x i32> %tmp3) {
 ; CHECK-LABEL: @test49(
@@ -1121,19 +1136,6 @@ define i1 @test68(i32 %x) {
   %and = and i32 %x, 127
   %cmp = icmp sgt i32 %and, 30
   ret i1 %cmp
-}
-
-; PR14708
-define i1 @test69(i32 %c) {
-; CHECK-LABEL: @test69(
-; CHECK-NEXT:    [[TMP1:%.*]] = or i32 %c, 32
-; CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i32 [[TMP1]], 97
-; CHECK-NEXT:    ret i1 [[TMP2]]
-;
-  %1 = icmp eq i32 %c, 97
-  %2 = icmp eq i32 %c, 65
-  %3 = or i1 %1, %2
-  ret i1 %3
 }
 
 ; PR15940
