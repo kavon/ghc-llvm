@@ -309,17 +309,21 @@ let isCall = 1, Uses = [RSP], SchedRW = [WriteJump] in {
 }
 
 // CPS call/return pseudo-instrs
-// TODO(kavon): right now, only CPSCALLdi64 is used in X86InstrCompiler.td
 let isCall = 1, Uses = [RSP], SchedRW = [WriteJump], hasSideEffects = 1,
     isCodeGenOnly = 1, usesCustomInserter = 1 in {
-  def CPSCALLdi64   : PseudoI<(outs),
+  def CPSCALLd64   : PseudoI<(outs),
                         (ins i64i32imm_pcrel:$dst),
                         []>;
-  def CPSCALLri64   : PseudoI<(outs),
+  def CPSCALLr64   : PseudoI<(outs),
                         (ins ptr_rc_tailcall:$dst), []>;
+
+  // CPSCALLm is needed because we would otherwise get the following:
+  //     t7: i64,ch = MOV64rm<Mem:LD8[%ptr]> t4
+  //     t15: ch,glue = CPSCALLr64 t7, ..., t7:1, t13:1
+  // and pre-RA-sched does not like it, so we look for this pattern explicitly.
   let mayLoad = 1 in
-  def CPSCALLmi64   : PseudoI<(outs),
-                        (ins i64mem_TC:$dst), []>;
+  def CPSCALLm64   : PseudoI<(outs),
+                        (ins i64mem_TC:$dst), [(X86cps_call (loadi64 addr:$dst))]>;
 }
 
 let isTerminator = 1, isReturn = 1, isBarrier = 1, mayLoad = 1,
