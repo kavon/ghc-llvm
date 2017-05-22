@@ -26568,7 +26568,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
  
 
   //////////
-  // add a store of retPt's address to the SP
+  // compute the return address.
 
   unsigned RetAddr = MRI.createVirtualRegister(PointerRC);
 
@@ -26581,10 +26581,28 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(NoRegister)
     ;
 
-  // CPSCALL operands: target, regmask, RSP<imp-use>, firstArgReg
-  MachineOperand SPReg = MI.getOperand(3); // get firstArgReg
+
+  /////////
+  // Depending on the opcode kind, we perform the following:
+  //
+  // 1. adding a store of the ret addr to the stack pointer operand.
+  // 2. turn the CPSCALL into a jump via 'TCReturn' instructions.
+
+  // indicates which arg is the convention's stack pointer,
+  // with the first real argument offset in the IR being 0.
+  // GHC uses: Base, Sp, Hp, R1, ...
+  unsigned SPOffset = 1;
+
+  // CPSCALLr/CPSCALL/d operands: target, regmask, RSP, firstArgReg
+  // CPSCALLm operands: target, 1, noreg, 0, noreg, regmask, RSP, firstArgReg
+
+  bool isMem = TCOpcode == X86::TCRETURNmi64;
+
+  unsigned FirstArgOff = isMem ? 7 : 3;
+  MachineOperand SPReg = MI.getOperand(FirstArgOff + SPOffset);
   assert(SPReg.isReg() && "unexpected non-register first returned value for SP");
 
+  // store the RetAddr into SpReg
   // MOV64mr SPReg, 1, %noreg, 0, %noreg, RetAddr<kill>
   BuildMI(*MBB, MachineBasicBlock::iterator(MI), DL, TII->get(X86::MOV64mr))
     .addReg(SPReg.getReg()) // dest
@@ -26595,10 +26613,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(RetAddr, RegState::Kill)
     ;
 
-
-  /////////
-  // turn the CPSCALL into a TCReturn
-
+  // add the empty TCRet instr
   MachineInstr *TCRet = MF->CreateMachineInstr(TII->get(TCOpcode), DL);
   MBB->insertAfter(MachineBasicBlock::iterator(MI), TCRet);
 
@@ -26608,7 +26623,16 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // then, add the jump target
   TCRet->addOperand(MI.getOperand(0));
 
-  // Add the stack adjust immediate (assuming zero right now)
+  if (isMem) {
+    // next we add the operands related to the memory load,
+    // which are the "1, noreg, 0, noreg" in the operands above.
+    for(unsigned i = 1; i <= 4; i++) {
+      TCRet->addOperand(MI.getOperand(i));
+    }
+  }
+
+  // Add the stack adjust immediate, which we set to zero. 
+  // could probably get this from the stack adjust if it matters.
   TCRet->addOperand(MachineOperand::CreateImm(0));
 
   // then, add implicit reg uses from the CPS call, which includes a use of RSP
@@ -26622,8 +26646,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   MF->dump();
 
-  // expand-isel-pseudos should continue on by scanning
-  // retpt.
+  // expand-isel-pseudos should continue on by scanning retPt.
   return retPt;
 
 }
@@ -27000,7 +27023,7 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     return EmitCPSCall(MI, BB, X86::TCRETURNri64);
 
   case X86::CPSCALLm64:
-    report_fatal_error("CPSCALLm64 is unhandled at this time.");
+    return EmitCPSCall(MI, BB, X86::TCRETURNmi64);
 
   case X86::CPSRET:
     return EmitCPSRet(MI, BB);
