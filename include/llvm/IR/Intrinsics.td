@@ -673,6 +673,16 @@ def int_experimental_gc_relocate : Intrinsic<[llvm_any_ty],
                                 [llvm_token_ty, llvm_i32_ty, llvm_i32_ty],
                                 [IntrReadMem]>;
 
+//===------------------------ CPS Call Intrinsics ---------------===//
+
+// TODO(kavon): add const fields for an ID, RA byte offset, and SP indicator.
+def int_experimental_cpscall : Intrinsic<[llvm_any_ty],
+                                  [llvm_i64_ty, llvm_i32_ty, llvm_i16_ty, 
+                                   llvm_anyptr_ty, llvm_vararg_ty],
+                                   [Throws]>;
+
+
+
 //===------------------------ Coroutine Intrinsics ---------------===//
 // These are documented in docs/Coroutines.rst
 

@@ -5749,6 +5749,11 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return nullptr;
   }
 
+  case Intrinsic::experimental_cpscall: {
+    report_fatal_error("saw @llvm.experimental.cpscall intrinsic.");
+    return nullptr;
+  }
+
   }
 }
 
