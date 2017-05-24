@@ -2711,6 +2711,7 @@ public:
     bool DoesNotReturn     : 1;
     bool IsReturnValueUsed : 1;
     bool IsConvergent      : 1;
+    bool IsCPSCall         : 1;
 
     // IsTailCall should be modified by implementations of
     // TargetLowering::LowerCall that perform tail call conversions.
@@ -2732,7 +2733,7 @@ public:
     CallLoweringInfo(SelectionDAG &DAG)
         : RetTy(nullptr), RetSExt(false), RetZExt(false), IsVarArg(false),
           IsInReg(false), DoesNotReturn(false), IsReturnValueUsed(true),
-          IsConvergent(false), IsTailCall(false), NumFixedArgs(-1),
+          IsConvergent(false), IsCPSCall(false), IsTailCall(false), NumFixedArgs(-1),
           CallConv(CallingConv::C), DAG(DAG), CS(nullptr), IsPatchPoint(false) {
     }
 
@@ -2838,6 +2839,11 @@ public:
 
     CallLoweringInfo &setIsPatchPoint(bool Value = true) {
       IsPatchPoint = Value;
+      return *this;
+    }
+
+    CallLoweringInfo &setIsCPSCall(bool Value = true) {
+      IsCPSCall = Value;
       return *this;
     }
 

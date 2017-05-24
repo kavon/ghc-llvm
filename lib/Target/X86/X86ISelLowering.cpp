@@ -2347,8 +2347,8 @@ X86TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   X86ISD::NodeType opcode = X86ISD::RET_FLAG;
   if (CallConv == CallingConv::X86_INTR)
     opcode = X86ISD::IRET;
-  else if (CallConv == CallingConv::GHC)
-    opcode = X86ISD::CPS_RET;
+  // else if (CallConv == CallingConv::GHC) // TODO(kavon): temporarily disabling this.
+  //   opcode = X86ISD::CPS_RET;
   return DAG.getNode(opcode, dl, MVT::Other, RetOps);
 }
 
@@ -3800,8 +3800,7 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     return DAG.getNode(X86ISD::TC_RETURN, dl, NodeTys, Ops);
   }
 
-  // NOTE(kavon): if we add CPS call marker, change this check
-  unsigned CallOpCode = (CallConv == CallingConv::GHC && !isTailCall)
+  unsigned CallOpCode = CLI.IsCPSCall
                         ? X86ISD::CPS_CALL
                         : X86ISD::CALL;
 

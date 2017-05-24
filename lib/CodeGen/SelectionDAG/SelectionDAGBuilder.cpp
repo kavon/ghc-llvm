@@ -5750,11 +5750,32 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
   }
 
   case Intrinsic::experimental_cpscall: {
-    report_fatal_error("saw @llvm.experimental.cpscall intrinsic.");
+    visitCPSCall(I);
     return nullptr;
   }
 
   }
+}
+
+void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
+  const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+  TargetLowering::CallLoweringInfo CLI(DAG);
+
+  const unsigned FnPtrOff = 0;
+  const unsigned NonRealArgs = 4;
+  unsigned ArgIdx = NonRealArgs;
+  unsigned NumArgs = I.getNumArgOperands() - NonRealArgs;
+  SDValue Callee = getValue(I.getArgOperand(FnPtrOff));;
+  Type *ReturnTy = I.getType();
+
+  populateCallLoweringInfo(CLI, &I, ArgIdx, NumArgs, Callee, ReturnTy, false /* IsPatchPoint */);
+
+  CLI.setIsCPSCall(true);
+
+  std::pair<SDValue, SDValue> Result = TLI.LowerCallTo(CLI);
+
+  DAG.setRoot(Result.second);
+  return;
 }
 
 void SelectionDAGBuilder::visitConstrainedFPIntrinsic(const CallInst &I,

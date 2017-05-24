@@ -909,6 +909,8 @@ private:
   void visitGCRelocate(const GCRelocateInst &I);
   void visitGCResult(const GCResultInst &I);
 
+  void visitCPSCall(const CallInst &I);
+
   void visitVectorReduce(const CallInst &I, unsigned Intrinsic);
 
   void visitUserOp1(const Instruction &I) {
