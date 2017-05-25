@@ -5761,8 +5761,13 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   TargetLowering::CallLoweringInfo CLI(DAG);
 
+  // these constants are based on the following arg order
+  // fnPtr, ID, RA_OFF, SP_ARGNUM, realArg1, ..., realArgN
   const unsigned FnPtrOff = 0;
+  const unsigned MD_Start = 1;
+  const unsigned MD_End = 3;
   const unsigned NonRealArgs = 4;
+
   unsigned ArgIdx = NonRealArgs;
   unsigned NumArgs = I.getNumArgOperands() - NonRealArgs;
   SDValue Callee = getValue(I.getArgOperand(FnPtrOff));;
@@ -5770,7 +5775,17 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
 
   populateCallLoweringInfo(CLI, &I, ArgIdx, NumArgs, Callee, ReturnTy, false /* IsPatchPoint */);
 
+  // add information about this CPS call to the CLI
   CLI.setIsCPSCall(true);
+  for (unsigned i = MD_Start; i <= MD_End; i++) {
+    Value* v = I.getArgOperand(i);
+    ConstantInt *ci = dyn_cast<ConstantInt>(v);
+    int64_t asInt = ci->getSExtValue();
+    // TODO(kavon): push SDValues and their type instead,
+    // so that they can be prepended as operands to the CPS_CALL
+    // in LowerCallTo.
+    CLI.CPSCallInfo.push_back(asInt);
+  }
 
   std::pair<SDValue, SDValue> Result = TLI.LowerCallTo(CLI);
 
