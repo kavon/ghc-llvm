@@ -3727,6 +3727,15 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Ops.push_back(Chain);
   Ops.push_back(Callee);
 
+  unsigned CallOpCode = X86ISD::CALL;
+
+  if (CLI.IsCPSCall) {
+    CallOpCode = X86ISD::CPS_CALL;
+    // add the metadata right after the callee operand
+    for (auto sdv : CLI.CPSCallInfo)
+      Ops.push_back(sdv);
+  }
+
   if (isTailCall)
     Ops.push_back(DAG.getConstant(FPDiff, dl, MVT::i32));
 
@@ -3799,10 +3808,6 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     MF.getFrameInfo().setHasTailCall();
     return DAG.getNode(X86ISD::TC_RETURN, dl, NodeTys, Ops);
   }
-
-  unsigned CallOpCode = CLI.IsCPSCall
-                        ? X86ISD::CPS_CALL
-                        : X86ISD::CALL;
 
   Chain = DAG.getNode(CallOpCode, dl, NodeTys, Ops);
   InFlag = Chain.getValue(1);

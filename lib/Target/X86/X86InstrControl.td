@@ -312,10 +312,10 @@ let isCall = 1, Uses = [RSP], SchedRW = [WriteJump] in {
 let isCall = 1, Uses = [RSP], SchedRW = [WriteJump], hasSideEffects = 1,
     isCodeGenOnly = 1, usesCustomInserter = 1 in {
   def CPSCALLd64   : PseudoI<(outs),
-                        (ins i64i32imm_pcrel:$dst),
+                        (ins i64i32imm_pcrel:$dst, i64imm:$id, i32imm:$off, i16imm:$argnum),
                         []>;
   def CPSCALLr64   : PseudoI<(outs),
-                        (ins ptr_rc_tailcall:$dst), []>;
+                        (ins ptr_rc_tailcall:$dst, i64imm:$id, i32imm:$off, i16imm:$argnum), []>;
 
   // CPSCALLm is needed because we would otherwise get the following:
   //     t7: i64,ch = MOV64rm<Mem:LD8[%ptr]> t4
@@ -323,7 +323,9 @@ let isCall = 1, Uses = [RSP], SchedRW = [WriteJump], hasSideEffects = 1,
   // and pre-RA-sched does not like it, so we look for this pattern explicitly.
   let mayLoad = 1 in
   def CPSCALLm64   : PseudoI<(outs),
-                        (ins i64mem_TC:$dst), [(X86cps_call (loadi64 addr:$dst))]>;
+                        (ins i64mem_TC:$dst, i64imm:$id, i32imm:$off, i16imm:$argnum), 
+                        [(X86cps_call (loadi64 addr:$dst), 
+                          (i64 imm:$id), (i32 imm:$off), (i16 imm:$argnum))]>;
 }
 
 let isTerminator = 1, isReturn = 1, isBarrier = 1, mayLoad = 1,

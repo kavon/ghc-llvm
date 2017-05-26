@@ -2713,7 +2713,7 @@ public:
     bool IsConvergent      : 1;
 
     bool IsCPSCall         : 1;
-    SmallVector<int64_t, 3> CPSCallInfo;
+    SmallVector<SDValue, 3> CPSCallInfo;
 
     // IsTailCall should be modified by implementations of
     // TargetLowering::LowerCall that perform tail call conversions.

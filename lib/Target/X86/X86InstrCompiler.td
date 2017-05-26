@@ -1087,12 +1087,12 @@ def : Pat<(X86call (i64 texternalsym:$dst)),
           (CALL64pcrel32 texternalsym:$dst)>;
 
 // More specific CPS pseudo-instr patterns.
-def : Pat<(X86cps_call (i64 tglobaladdr:$dst)),
-          (CPSCALLd64 tglobaladdr:$dst)>;
-def : Pat<(X86cps_call (i64 texternalsym:$dst)),
-          (CPSCALLd64 texternalsym:$dst)>;
-def : Pat<(X86cps_call (i64 ptr_rc_tailcall:$dst)),
-          (CPSCALLr64 ptr_rc_tailcall:$dst)>;
+def : Pat<(X86cps_call (i64 tglobaladdr:$dst), (i64 imm:$id), (i32 imm:$off), (i16 imm:$argnum)),
+          (CPSCALLd64 tglobaladdr:$dst, imm:$id, imm:$off, imm:$argnum)>;
+def : Pat<(X86cps_call (i64 texternalsym:$dst), (i64 imm:$id), (i32 imm:$off), (i16 imm:$argnum)),
+          (CPSCALLd64 texternalsym:$dst, imm:$id, imm:$off, imm:$argnum)>;
+def : Pat<(X86cps_call (i64 ptr_rc_tailcall:$dst), (i64 imm:$id), (i32 imm:$off), (i16 imm:$argnum)),
+          (CPSCALLr64 ptr_rc_tailcall:$dst, imm:$id, imm:$off, imm:$argnum)>;
 
 // Tailcall stuff. The TCRETURN instructions execute after the epilog, so they
 // can never use callee-saved registers. That is the purpose of the GR64_TC

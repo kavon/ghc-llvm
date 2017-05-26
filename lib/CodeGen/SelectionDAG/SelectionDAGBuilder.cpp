@@ -5776,15 +5776,13 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
   populateCallLoweringInfo(CLI, &I, ArgIdx, NumArgs, Callee, ReturnTy, false /* IsPatchPoint */);
 
   // add information about this CPS call to the CLI
+  SDLoc dl;
   CLI.setIsCPSCall(true);
   for (unsigned i = MD_Start; i <= MD_End; i++) {
     Value* v = I.getArgOperand(i);
     ConstantInt *ci = dyn_cast<ConstantInt>(v);
-    int64_t asInt = ci->getSExtValue();
-    // TODO(kavon): push SDValues and their type instead,
-    // so that they can be prepended as operands to the CPS_CALL
-    // in LowerCallTo.
-    CLI.CPSCallInfo.push_back(asInt);
+    SDValue sdv = DAG.getConstant(*ci, dl, EVT::getEVT(ci->getType()));
+    CLI.CPSCallInfo.push_back(sdv);
   }
 
   std::pair<SDValue, SDValue> Result = TLI.LowerCallTo(CLI);
