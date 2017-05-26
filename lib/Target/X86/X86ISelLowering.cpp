@@ -26569,7 +26569,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   if (isMem) {
     // next we add the operands related to the memory load,
-    // which are the "1, noreg, 0, noreg" in the operands above.
+    // which are the "1, noreg, 0, noreg" in Note [constant offsets]
     for(unsigned i = 1; i <= 4; i++) {
       TCRet->addOperand(MI.getOperand(i));
     }
