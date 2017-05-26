@@ -2347,8 +2347,8 @@ X86TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   X86ISD::NodeType opcode = X86ISD::RET_FLAG;
   if (CallConv == CallingConv::X86_INTR)
     opcode = X86ISD::IRET;
-  // else if (CallConv == CallingConv::GHC) // TODO(kavon): temporarily disabling this.
-  //   opcode = X86ISD::CPS_RET;
+  else if (CallConv == CallingConv::GHC) // TODO(kavon): look for a function attribute instead
+    opcode = X86ISD::CPS_RET;
   return DAG.getNode(opcode, dl, MVT::Other, RetOps);
 }
 
@@ -26379,10 +26379,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                MachineBasicBlock *MBB,
                                unsigned TCOpcode) const {
 
-  // When splitting a MBB, we keep track of the earliest position in the original
-  // BasicBlock where the associated metadata on the IR instr can be found.
-  static DenseMap<MachineBasicBlock*, std::pair<BasicBlock::const_iterator,BasicBlock::const_iterator>> MetadataSearch;
-
   MachineFunction *MF = MBB->getParent();
   const X86Subtarget &STI = MF->getSubtarget<X86Subtarget>();
   const TargetInstrInfo *TII = STI.getInstrInfo();
@@ -26414,22 +26410,16 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     if (II->isCopy()) {
       MachineOperand &toArg = II->getOperand(0);
       MachineOperand &fromArg = II->getOperand(1);
+      unsigned toReg;
+      unsigned fromReg;
 
-      if (fromArg.isReg() && toArg.isReg()) {
-        unsigned toReg = toArg.getReg();
-        unsigned fromReg = fromArg.getReg();
-
-        if (TargetRegisterInfo::isPhysicalRegister(toReg))
-          report_fatal_error("unexpected phys register overwrite");
-
-        // we found what we're looking to put into the map,
-        // a virt <- COPY phys instruction, so we record it and
-        // remove the instruction
-        if (TargetRegisterInfo::isPhysicalRegister(fromReg)) {
+      if (toArg.isReg()
+          && fromArg.isReg()
+          && TargetRegisterInfo::isVirtualRegister(toReg = toArg.getReg())
+          && TargetRegisterInfo::isPhysicalRegister(fromReg = fromArg.getReg())) {
+          // we found a virt <- COPY phys instruction, so record and delete
           RegCopies.push_back(std::make_pair(toReg, fromReg));
           deleteInstr = true;
-        }
-
       } else {
         endOfRetSeq = true;   
       }
@@ -26502,74 +26492,34 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   //////
   // Fetch the metadata of this call to get information about
   // the return point.
+  //
 
-  MDNode* md = nullptr;
-  { // new scope
-    bool FoundCall = false;
+  // Note [constant offsets]:
+  //
+  // Grouping with parens is for clarity here and are actually flattened
+  //
+  // CPSCALLr/CPSCALL/d operands: target, 
+  //                              (id, ra_off, argnum) : metadata,
+  //                              regmask, RSP, firstArgReg
+  //
+  // CPSCALLm operands: target, 
+  //                    (1, noreg, 0, noreg) : memops, 
+  //                    (id, ra_off, argnum) : metadata,
+  //                    regmask, RSP, firstArgReg
 
-    if (MetadataSearch.count(MBB) == 0) {
-      const BasicBlock* BB = MBB->getBasicBlock();
+  bool isMem = TCOpcode == X86::TCRETURNmi64;
 
-      // this can only fail if at some point between lowering the IR
-      // and getting to this point during expand-isel-pseudos, a fresh 
-      // MBB with a CPS call was introduced.
-      if (BB == nullptr)
-        report_fatal_error("MBB containing CPS call has no corresponding BB");
+  unsigned MDBase = isMem ? 5 : 1; // see Note [constant offsets]
 
-      MetadataSearch[MBB] = std::make_pair(BB->begin(), BB->end());
-    }
-
-    auto iterPair = MetadataSearch[MBB];
-    BasicBlock::const_iterator II = iterPair.first;
-    BasicBlock::const_iterator END = iterPair.second;
-
-    while (II != END && !FoundCall) {
-      if (II->getOpcode() == Instruction::Call) {
-        md = II->getMetadata("cps.retpt");
-        if (md)
-          FoundCall = true;
-      }
-      II++;
-    }
-
-    // the metadata is not optional right now.
-    if (!FoundCall)
-      report_fatal_error("at least one CPS call is missing cps.retpt metadata.");
-
-    // We have consumed the metadata for the CPSCALL in MBB, and anything
-    // following that CPSCALL is now in retPt, so we forward the II and END
-    // using the map
-    MetadataSearch[retPt] = std::make_pair(II, END);
-
-  } // end scope
-
-  // obtain the label name now that we have MD
-  if (md->getNumOperands() != 2)
-    report_fatal_error("must have only two arguments to cps.retpt metadata.");
-
-  Metadata* mdVal = md->getOperand(0).get();
-  MDString* mdName = dyn_cast<MDString>(mdVal);
-
-  if (mdName == nullptr)
-    report_fatal_error("first argument to cps.retpt metadata must be a string name.");
-
-  // TODO: probably cleaner to expect an int offset instead of a string, but it's not
-  // clear from the Metadata API how to access int constant metadata.
-
-  mdVal = md->getOperand(1).get();
-  MDString* mdOffset = dyn_cast<MDString>(mdVal);
-
-  if (mdOffset == nullptr)
-    report_fatal_error("second argument to cps.retpt metadata must be a string containing an int offset.");
-
-  APInt offset;
-  if (mdOffset->getString().getAsInteger(0, offset))
-    report_fatal_error("second argument to cps.retpt is not parsable as an integer offset!");
+  int64_t id = MI.getOperand(MDBase + 0).getImm();
+  int64_t ra_off = MI.getOperand(MDBase + 1).getImm();
+  int64_t sp_argnum = MI.getOperand(MDBase + 2).getImm();
 
   // insert a label at the top of the retpt
-  MCSymbol *Label = MF->getContext().createTempSymbol(mdName->getString(), true, false);
+  APInt idAP(64, id, /* isSigned */ false);
+  MCSymbol *Label = MF->getContext().createTempSymbol(idAP.toString(16, false), true, false);
   BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
- 
+
 
   //////////
   // compute the return address.
@@ -26592,18 +26542,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // 1. adding a store of the ret addr to the stack pointer operand.
   // 2. turn the CPSCALL into a jump via 'TCReturn' instructions.
 
-  // indicates which arg is the convention's stack pointer,
-  // with the first real argument offset in the IR being 0.
-  // GHC uses: Base, Sp, Hp, R1, ...
-  unsigned SPOffset = 1;
-
-  // CPSCALLr/CPSCALL/d operands: target, regmask, RSP, firstArgReg
-  // CPSCALLm operands: target, 1, noreg, 0, noreg, regmask, RSP, firstArgReg
-
-  bool isMem = TCOpcode == X86::TCRETURNmi64;
-
-  unsigned FirstArgOff = isMem ? 7 : 3;
-  MachineOperand SPReg = MI.getOperand(FirstArgOff + SPOffset);
+  unsigned FirstArgOff = isMem ? 10 : 6; // see Note [constant offsets]
+  MachineOperand SPReg = MI.getOperand(FirstArgOff + sp_argnum);
   assert(SPReg.isReg() && "unexpected non-register first returned value for SP");
 
   // store the RetAddr into SpReg
@@ -26612,7 +26552,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(SPReg.getReg()) // dest
     .addImm(1)
     .addReg(NoRegister)
-    .addImm(offset.getSExtValue())    // byte offset from SPReg to store value
+    .addImm(ra_off)    // byte offset from SPReg to store value
     .addReg(NoRegister)
     .addReg(RetAddr, RegState::Kill)
     ;
