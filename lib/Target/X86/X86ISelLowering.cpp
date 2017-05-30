@@ -26604,7 +26604,8 @@ X86TargetLowering::EmitCPSRet(MachineInstr &MI,
   const TargetInstrInfo *TII = STI.getInstrInfo();
   MachineRegisterInfo &MRI = MF->getRegInfo();
   const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
-  const TargetRegisterClass *PointerRC = TRI->getPointerRegClass(*MF);
+  // Kind 4 = register class for function pointer of tail call; see X86RegisterInfo::getPointerRegClass
+  const TargetRegisterClass *PointerRC = TRI->getPointerRegClass(*MF, /* Kind */ 4);
   const unsigned NoRegister = 0; // Guaranteed to be the NoRegister value for
                                  // all targets.
   DebugLoc DL; // debug loc is irrelevant
