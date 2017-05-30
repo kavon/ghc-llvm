@@ -224,6 +224,14 @@ X86RegisterInfo::getPointerRegClass(const MachineFunction &MF,
 const TargetRegisterClass *
 X86RegisterInfo::getGPRsForTailCall(const MachineFunction &MF) const {
   const Function *F = MF.getFunction();
+
+  if (F && F->getCallingConv() == CallingConv::GHC) {
+    if (Is64Bit)
+      return &X86::GR64RegClass;
+    else
+      return &X86::GR32RegClass;
+  }
+
   if (IsWin64 || (F && F->getCallingConv() == CallingConv::X86_64_Win64))
     return &X86::GR64_TCW64RegClass;
   else if (Is64Bit)
