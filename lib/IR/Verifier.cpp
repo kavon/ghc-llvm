@@ -503,6 +503,7 @@ private:
   void visitConstantExprsRecursively(const Constant *EntryC);
   void visitConstantExpr(const ConstantExpr *CE);
   void verifyStatepoint(ImmutableCallSite CS);
+  void verifyCPSCall(ImmutableCallSite CS);
   void verifyFrameRecoverIndices();
   void verifySiblingFuncletUnwinds();
 
@@ -1734,6 +1735,42 @@ bool Verifier::verifyAttributeCount(AttributeList Attrs, unsigned Params) {
     return true;
 
   return false;
+}
+
+/// Verify that the cpscall intrinsic usage is valid.
+void Verifier::verifyCPSCall(ImmutableCallSite CS) {
+  // fn_ptr, id, ra_off, sp_argnum, realArg1
+  const int NumNonReal = 4;
+
+  // IR semantics check
+  Assert(!CS.doesNotAccessMemory() && !CS.onlyReadsMemory() &&
+         !CS.onlyAccessesArgMemory(),
+         "cpscall must read and write all memory to preserve "
+         "reordering restrictions required by its semantics",
+         CS);
+
+  // function call type checking
+  const Value *Callee = CS.getArgument(0);
+  auto *PT = dyn_cast<PointerType>(Callee->getType());
+  Assert(PT && PT->getElementType()->isFunctionTy(),
+         "cpscall -- callee arg must be of function pointer type", CS, Callee);
+  FunctionType *FnTy = cast<FunctionType>(PT->getElementType());
+
+  // reason: I have no idea whether it would work.
+  Assert(!(FnTy->isVarArg()),
+          "cannot cpscall a vararg function at this time", CS, Callee);
+
+  const int ExpectedParams = (int)FnTy->getNumParams();
+  const int ArgsGiven = ((int)CS.arg_size()) - NumNonReal;
+
+  Assert(ExpectedParams == ArgsGiven,
+          "cpscall -- callee parameter count differs from the number of (real) args given to it.",
+          FnTy, CS);
+
+
+
+  Assert(false, "died here", CS);
+  return;
 }
 
 /// Verify that statepoint intrinsic is well formed.
@@ -4093,6 +4130,10 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
         std::max(uint64_t(Entry.second), IdxArg->getLimitedValue(~0U) + 1));
     break;
   }
+
+  case Intrinsic::experimental_cpscall:
+    verifyCPSCall(CS);
+    break;
 
   case Intrinsic::experimental_gc_statepoint:
     Assert(!CS.isInlineAsm(),
