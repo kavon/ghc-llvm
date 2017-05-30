@@ -5759,8 +5759,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
 
 void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
-  TargetLowering::CallLoweringInfo CLI(DAG);
-
+  
   // these constants are based on the following arg order
   // fnPtr, ID, RA_OFF, SP_ARGNUM, realArg1, ..., realArgN
   const unsigned FnPtrOff = 0;
@@ -5768,16 +5767,20 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
   const unsigned MD_End = 3;
   const unsigned NonRealArgs = 4;
 
+  TargetLowering::CallLoweringInfo CLI(DAG);
+  ImmutableCallSite CS = &I;
   unsigned ArgIdx = NonRealArgs;
   unsigned NumArgs = I.getNumArgOperands() - NonRealArgs;
-  SDValue Callee = getValue(I.getArgOperand(FnPtrOff));;
-  Type *ReturnTy = I.getType();
+  Value *FnPtr = I.getArgOperand(FnPtrOff);
+  SDValue Callee = getValue(FnPtr);
+  Type *RetTy = I.getType();
+  
+  populateCallLoweringInfo(CLI, CS, ArgIdx, NumArgs, Callee, RetTy, /* IsPatchPoint */ false);
 
-  populateCallLoweringInfo(CLI, &I, ArgIdx, NumArgs, Callee, ReturnTy, false /* IsPatchPoint */);
-
-  // add information about this CPS call to the CLI
-  SDLoc dl;
-  CLI.setIsCPSCall(true);
+  // add metadata about this CPS call to the CLI
+  CLI.setIsCPSCall(true)
+     .setTailCall(false);
+  SDLoc dl = getCurSDLoc();
   for (unsigned i = MD_Start; i <= MD_End; i++) {
     Value* v = I.getArgOperand(i);
     ConstantInt *ci = dyn_cast<ConstantInt>(v);
@@ -5785,9 +5788,17 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
     CLI.CPSCallInfo.push_back(sdv);
   }
 
+  // actually lower the call
   std::pair<SDValue, SDValue> Result = TLI.LowerCallTo(CLI);
 
   DAG.setRoot(Result.second);
+
+  if (Result.first.getNode()) {
+    const Instruction *Inst = CS.getInstruction();
+    Result.first = lowerRangeToAssertZExt(DAG, *Inst, Result.first);
+    setValue(Inst, Result.first);
+  }
+
   return;
 }
 
