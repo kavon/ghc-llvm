@@ -1749,12 +1749,15 @@ void Verifier::verifyCPSCall(ImmutableCallSite CS) {
          "reordering restrictions required by its semantics",
          CS);
 
+  // no inline asm
+  Assert(!CS.isInlineAsm(), "cpscall does not support inline asm", CS);
+
   // ensure that CPS call metadata are all constant ints.
   // the types for these ints are enforced automatically
   for (unsigned i = 1; i < NumNonReal; i++) {
     const Value *MD = CS.getArgument(i);
     Assert(isa<ConstantInt>(MD),
-            "cpscall -- the following arg number (from zero) must\n"
+            "the following cpscall arg number (from zero) must\n"
             "be a constant integer, at the callsite below it:", i, CS);
   }
 
@@ -1762,51 +1765,56 @@ void Verifier::verifyCPSCall(ImmutableCallSite CS) {
   const Value *Callee = CS.getArgument(0);
   auto *PT = dyn_cast<PointerType>(Callee->getType());
 
-  // check callee type
+  // check callee arg type
   Assert(PT && PT->getElementType()->isFunctionTy(),
          "cpscall -- callee arg must be of function pointer type", CS);
   FunctionType *FnTy = cast<FunctionType>(PT->getElementType());
 
-  // no varargs, because I have no idea whether it would work.
+  // no vararg callees, because I have no idea whether it would work.
   Assert(!(FnTy->isVarArg()),
           "cannot cpscall a vararg function at this time", CS, Callee);
 
-  const unsigned CS_Args = CS.arg_size();
+  const unsigned TotalArgs = CS.arg_size();
   const int ExpectedParams = (int)FnTy->getNumParams();
-  const int ArgsGiven = ((int)CS_Args) - NumNonReal;
+  const int RealArgs = ((int)TotalArgs) - NumNonReal;
 
   // check arity
-  Assert(ExpectedParams == ArgsGiven,
+  Assert(ExpectedParams == RealArgs,
           "cpscall -- callee's parameter count differs from "
           "the number of (real) args given at this callsite.",
           CS);
 
-  // match param types with arg types
+  // match callee param types with callsite arg types
   for (unsigned ArgN = NumNonReal, ParamN = 0; 
-        ArgN < CS_Args; ArgN++, ParamN++) {
+        ArgN < TotalArgs; ArgN++, ParamN++) {
     const Type *ArgTy = CS.getArgument(ArgN)->getType();
     const Type *ParamTy = FnTy->getParamType(ParamN);
     Assert(ArgTy == ParamTy,
             "cpscall -- the callee's parameter type does\n"
             "not match the corresponding arg type at this callsite.\n"
-            "The parameter number in question is:",
+            "The mismatched callee type parameter number, counting from 1, is:",
             ParamN+1, CS);
   }
 
+  // match callee return type with callsite's return type
+  Assert(FnTy->getReturnType() == CS.getType(),
+            "cpscall -- callee's return type does not match the\n"
+            "return type at this callsite:", CS);
+
   // check that the SP argnum metadata is within bounds
-  const ConstantInt* argnum = dyn_cast<ConstantInt>(CS.getArgument(3));
-  Assert(argnum->getZExtValue() < ((uint64_t)ArgsGiven),
+  uint64_t argNum = dyn_cast<ConstantInt>(CS.getArgument(3))
+                                -> getZExtValue();
+  Assert(argNum < ((uint64_t)RealArgs),
           "cpscall -- stack pointer argument number is out of range.\n"
           "the offset is from the real arguments, with 0 as the first\n"
           " real arg.", CS);
 
   // check the type of the SP argnum value is a i64*
+  argNum += NumNonReal; // get absolute offset
+  const Type *argNumTy = CS.getArgument(argNum)->getType();
+  Assert(argNumTy == Type::getInt64PtrTy(CS.getParent()->getContext()),
+          "cpscall -- the stack pointer argument must be of type i64*", CS);
 
-
-
-
-
-  Assert(false, "died here", CS);
   return;
 }
 
