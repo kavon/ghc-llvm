@@ -26517,7 +26517,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // insert a label at the top of the retpt
   APInt idAP(64, id, /* isSigned */ false);
-  MCSymbol *Label = MF->getContext().createTempSymbol(idAP.toString(16, false), true, false);
+  std::string labName = idAP.toString(16, /* Signed */ false).append("_");
+  MCSymbol *Label = MF->getContext().createTempSymbol(labName, true, false);
   BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
 
 
