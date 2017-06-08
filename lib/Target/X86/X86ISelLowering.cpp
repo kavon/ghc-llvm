@@ -26589,7 +26589,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // finally, delete the CPSCALL
   MI.eraseFromParent();
 
-  MF->dump();
+  // MF->dump();
 
   // expand-isel-pseudos should continue on by scanning retPt.
   return retPt;
@@ -26672,7 +26672,7 @@ X86TargetLowering::EmitCPSRet(MachineInstr &MI,
   // finally, delete the CPSRET
   MI.eraseFromParent();
 
-  MF->dump(); // TODO remove later
+  // MF->dump();
 
   return MBB;
 }
