@@ -426,7 +426,18 @@ def CC_X86_64_GHC : CallingConv<[
   // Pass in STG registers: F1, F2, F3, F4, D1, D2
   CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
             CCIfSubtarget<"hasSSE1()",
-            CCAssignToReg<[XMM1, XMM2, XMM3, XMM4, XMM5, XMM6]>>>
+            CCAssignToReg<[XMM1, XMM2, XMM3, XMM4, XMM5, XMM6]>>>,
+            // note: sse1 is xmm0-xmm7
+
+  // TODO(kavon): are these the right values? I just put these
+  // here to prevent really bad codegen for undef vals.
+  CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
+            CCIfSubtarget<"hasSSE2()",
+            CCAssignToReg<[XMM8, XMM9, XMM10, XMM11, XMM12, XMM13,
+                           XMM14, XMM15]>>>,
+
+  // TODO(kavon): create a GHC specific error.
+  CCCustom<"CC_X86_AnyReg_Error">
 ]>;
 
 
