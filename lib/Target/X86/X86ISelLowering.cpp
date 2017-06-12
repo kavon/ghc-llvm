@@ -26389,6 +26389,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
                                  // all targets.
   DebugLoc DL; // debug loc is irrelevant
 
+  // MF->dump();
+
   /////////////
   // -- Prepare to split the block apart --
   //

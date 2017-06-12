@@ -2576,6 +2576,9 @@ void SelectionDAGBuilder::visitBinary(const User &I, unsigned OpCode) {
 
   SDValue BinNodeValue = DAG.getNode(OpCode, getCurSDLoc(), Op1.getValueType(),
                                      Op1, Op2, Flags);
+
+  BinNodeValue.dump();
+
   setValue(&I, BinNodeValue);
 }
 
@@ -5798,6 +5801,19 @@ void SelectionDAGBuilder::visitCPSCall(const CallInst &I) {
     Result.first = lowerRangeToAssertZExt(DAG, *Inst, Result.first);
     setValue(Inst, Result.first);
   }
+
+  // reset the CSE map, as we cannot reuse memoized nodes across
+  // the CPS call. crossing a CPS call is like entering a new block.
+  
+  // also: CSEMap.clear() does not seem to work for this.
+
+  // an alternative is to create a CPSCallLowering class that is a friend of
+  // SelectionDAG and we can push a fresh CSE map each time we visit a CPSCall
+  // until the block is finished, and then combine the maps? I don't know.
+
+  for (SDNode N : DAG.allnodes())
+    N.dump(); // TODO(kavon): somehow, perform DAG.RemoveNodeFromCSEMaps(&N);
+
 
   return;
 }
