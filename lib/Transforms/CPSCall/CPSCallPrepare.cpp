@@ -17,7 +17,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/raw_ostream.h" // todo: remove later
 using namespace llvm;
 
 #define DEBUG_TYPE "cpscallprep"
@@ -32,7 +32,6 @@ namespace {
     bool skipFunction(Function &F) {
       return F.isDeclaration() || F.empty();
     }
-
 
     bool runOnFunction(Function &F) override {
       if (skipFunction(F))
@@ -69,6 +68,7 @@ namespace {
     void split(CallSite &CS) {
       CS->dump();
     }
+    
   };
 }
 
