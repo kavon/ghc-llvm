@@ -17,7 +17,9 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Support/raw_ostream.h" // todo: remove later
+
 using namespace llvm;
 
 #define DEBUG_TYPE "cpscallprep"
@@ -40,35 +42,47 @@ namespace {
       return doIt(F);
     }
 
-    bool isCPSCall(const CallSite &CS) {
-      Instruction *Inst = CS.getInstruction();
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst))
-        if (II->getIntrinsicID() == Intrinsic::experimental_cpscall)
-          return true;
-
-      return false;
-    }
-
     bool doIt(Function &F) {
       bool Changed = false;
-
       // find and split at each cpscall
-      for (auto BB = F.begin(), BBE = F.end(); BB != BBE; ++BB)
-        for (auto II = BB->begin(), IIE = BB->end(); II != IIE; ++II)
-          if (auto CS = CallSite(&*II))
-            if (isCPSCall(CS)) {
-              split(CS);
-              Changed = true;
-              ++CallsDone;
+      for (auto BBI = F.begin(), BBE = F.end(); BBI != BBE; ++BBI) {
+        BasicBlock *BB = &*BBI;
+        auto II = BB->begin();
+        auto IIE = BB->end();
+        
+        while (II != IIE) {
+          Instruction &Cursor = *II++;
+
+            if (isCPSCall(Cursor)) {
+                // perform the split
+                Instruction &NextInstr = *II++;
+                BasicBlock *NewBB = SplitBlock(BB, &NextInstr);
+
+                // update iterators to continue processing
+                // the rest of the split block. 
+                BBI = NewBB->getIterator();
+                II = NewBB->begin();
+                IIE = NewBB->end();
+                BB = NewBB;
+
+                ++CallsDone;
+                Changed = true;
             }
+        }
+      }
 
       return Changed;
     }
 
-    void split(CallSite &CS) {
-      CS->dump();
+    bool isCPSCall(Instruction &Cursor) {
+      if (auto CS = CallSite(&Cursor))
+        if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CS.getInstruction()))
+          if (II->getIntrinsicID() == Intrinsic::experimental_cpscall)
+            return true;
+
+      return false;
     }
-    
+
   };
 }
 
