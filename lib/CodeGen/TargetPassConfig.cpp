@@ -547,6 +547,8 @@ void TargetPassConfig::addCodeGenPrepare() {
 void TargetPassConfig::addISelPrepare() {
   addPreISel();
 
+  addPass(createCPSCallPrepPass());
+
   // Force codegen to run according to the callgraph.
   if (requiresCodeGenSCCOrder())
     addPass(new DummyCGSCCPass);

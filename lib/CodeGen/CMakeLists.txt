@@ -13,6 +13,7 @@ add_llvm_library(LLVMCodeGen
   CodeGen.cpp
   CodeGenPrepare.cpp
   CountingFunctionInserter.cpp
+  CPSCallPrepare.cpp
   CriticalAntiDepBreaker.cpp
   DeadMachineInstructionElim.cpp
   DetectDeadLanes.cpp
