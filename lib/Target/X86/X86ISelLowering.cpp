@@ -26486,7 +26486,14 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // otherwise later stages may delete its contents!
   MBB->addSuccessor(retPt);
 
-  retPt->setIsEHPad(true); // to satisfy verifier
+  // currently needed to tell PEI that this block needs a prologue.
+  // NB: that will only happen right now for functions with ghccc
+  retPt->setIsEHPad(true); // this is also needed to satisfy verifier.
+  
+  // retPt->setHasAddressTaken();  // FIXME: why does this crash llc?
+
+  // NOTE: it would be nice if we could just mark the block as 
+  // a "continuation point" instead of piggy-backing on EHPad.
 
 
   //////
@@ -26532,7 +26539,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(X86::RIP)
     .addImm(1)
     .addReg(NoRegister)
-    .addSym(Label)        // .addMBB(retPt) is another way to go if we wanted to.
+    .addMBB(retPt)
     .addReg(NoRegister)
     ;
 
