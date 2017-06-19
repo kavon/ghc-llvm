@@ -81,26 +81,43 @@ entry:
  ret void
 }
 
+define i8 @e(i32* nocapture %a, i32 %b) nounwind {
+; CHECK-LABEL: e:
+; CHECK:       # BB#0:
+; CHECK-NEXT:    # kill: %ESI<def> %ESI<kill> %RSI<def>
+; CHECK-NEXT:    movl (%rdi), %ecx
+; CHECK-NEXT:    leal (%rsi,%rcx), %edx
+; CHECK-NEXT:    addl %esi, %edx
+; CHECK-NEXT:    setb %al
+; CHECK-NEXT:    addl %esi, %ecx
+; CHECK-NEXT:    movl %edx, (%rdi)
+; CHECK-NEXT:    adcb $0, %al
+; CHECK-NEXT:    retq
+  %1 = load i32, i32* %a, align 4
+  %2 = add i32 %1, %b
+  %3 = icmp ult i32 %2, %b
+  %4 = zext i1 %3 to i8
+  %5 = add i32 %2, %b
+  store i32 %5, i32* %a, align 4
+  %6 = icmp ult i32 %5, %b
+  %7 = zext i1 %6 to i8
+  %8 = add nuw nsw i8 %7, %4
+  ret i8 %8
+}
+
 %scalar = type { [4 x i64] }
 
 define %scalar @pr31719(%scalar* nocapture readonly %this, %scalar %arg.b) {
 ; CHECK-LABEL: pr31719:
 ; CHECK:       # BB#0: # %entry
-; CHECK-NEXT:    addq 8(%rsi), %rcx
-; CHECK-NEXT:    sbbq %r10, %r10
-; CHECK-NEXT:    andl $1, %r10d
-; CHECK-NEXT:    addq 16(%rsi), %r8
-; CHECK-NEXT:    sbbq %rax, %rax
-; CHECK-NEXT:    andl $1, %eax
-; CHECK-NEXT:    addq 24(%rsi), %r9
 ; CHECK-NEXT:    addq (%rsi), %rdx
-; CHECK-NEXT:    adcq $0, %rcx
-; CHECK-NEXT:    adcq %r8, %r10
-; CHECK-NEXT:    adcq %r9, %rax
+; CHECK-NEXT:    adcq 8(%rsi), %rcx
+; CHECK-NEXT:    adcq 16(%rsi), %r8
+; CHECK-NEXT:    adcq 24(%rsi), %r9
 ; CHECK-NEXT:    movq %rdx, (%rdi)
 ; CHECK-NEXT:    movq %rcx, 8(%rdi)
-; CHECK-NEXT:    movq %r10, 16(%rdi)
-; CHECK-NEXT:    movq %rax, 24(%rdi)
+; CHECK-NEXT:    movq %r8, 16(%rdi)
+; CHECK-NEXT:    movq %r9, 24(%rdi)
 ; CHECK-NEXT:    movq %rdi, %rax
 ; CHECK-NEXT:    retq
 entry:
@@ -213,12 +230,12 @@ define %S @readd(%S* nocapture readonly %this, %S %arg.b) {
 ; CHECK-NEXT:    addq (%rsi), %rdx
 ; CHECK-NEXT:    movq 8(%rsi), %r10
 ; CHECK-NEXT:    adcq $0, %r10
-; CHECK-NEXT:    sbbq %rax, %rax
-; CHECK-NEXT:    andl $1, %eax
+; CHECK-NEXT:    setb %al
+; CHECK-NEXT:    movzbl %al, %eax
 ; CHECK-NEXT:    addq %rcx, %r10
 ; CHECK-NEXT:    adcq 16(%rsi), %rax
-; CHECK-NEXT:    sbbq %rcx, %rcx
-; CHECK-NEXT:    andl $1, %ecx
+; CHECK-NEXT:    setb %cl
+; CHECK-NEXT:    movzbl %cl, %ecx
 ; CHECK-NEXT:    addq %r8, %rax
 ; CHECK-NEXT:    adcq 24(%rsi), %rcx
 ; CHECK-NEXT:    addq %r9, %rcx

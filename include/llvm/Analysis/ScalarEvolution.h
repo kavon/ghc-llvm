@@ -636,7 +636,7 @@ private:
     /// @}
 
   public:
-    BackedgeTakenInfo() : MaxAndComplete(nullptr, 0) {}
+    BackedgeTakenInfo() : MaxAndComplete(nullptr, 0), MaxOrZero(false) {}
 
     BackedgeTakenInfo(BackedgeTakenInfo &&) = default;
     BackedgeTakenInfo &operator=(BackedgeTakenInfo &&) = default;
@@ -656,10 +656,12 @@ private:
     /// Test whether this BackedgeTakenInfo contains complete information.
     bool hasFullInfo() const { return isComplete(); }
 
-    /// Return an expression indicating the exact backedge-taken count of the
-    /// loop if it is known or SCEVCouldNotCompute otherwise. This is the
-    /// number of times the loop header can be guaranteed to execute, minus
-    /// one.
+    /// Return an expression indicating the exact *backedge-taken*
+    /// count of the loop if it is known or SCEVCouldNotCompute
+    /// otherwise.  If execution makes it to the backedge on every
+    /// iteration (i.e. there are no abnormal exists like exception
+    /// throws and thread exits) then this is the number of times the
+    /// loop header will execute minus one.
     ///
     /// If the SCEV predicate associated with the answer can be different
     /// from AlwaysTrue, we must add a (non null) Predicates argument.
@@ -1212,26 +1214,31 @@ public:
                          SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
                          unsigned Depth = 0);
   const SCEV *getAddExpr(const SCEV *LHS, const SCEV *RHS,
-                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
+                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                         unsigned Depth = 0) {
     SmallVector<const SCEV *, 2> Ops = {LHS, RHS};
-    return getAddExpr(Ops, Flags);
+    return getAddExpr(Ops, Flags, Depth);
   }
   const SCEV *getAddExpr(const SCEV *Op0, const SCEV *Op1, const SCEV *Op2,
-                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
+                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                         unsigned Depth = 0) {
     SmallVector<const SCEV *, 3> Ops = {Op0, Op1, Op2};
-    return getAddExpr(Ops, Flags);
+    return getAddExpr(Ops, Flags, Depth);
   }
   const SCEV *getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
-                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap);
+                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                         unsigned Depth = 0);
   const SCEV *getMulExpr(const SCEV *LHS, const SCEV *RHS,
-                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
+                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                         unsigned Depth = 0) {
     SmallVector<const SCEV *, 2> Ops = {LHS, RHS};
-    return getMulExpr(Ops, Flags);
+    return getMulExpr(Ops, Flags, Depth);
   }
   const SCEV *getMulExpr(const SCEV *Op0, const SCEV *Op1, const SCEV *Op2,
-                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
+                         SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                         unsigned Depth = 0) {
     SmallVector<const SCEV *, 3> Ops = {Op0, Op1, Op2};
-    return getMulExpr(Ops, Flags);
+    return getMulExpr(Ops, Flags, Depth);
   }
   const SCEV *getUDivExpr(const SCEV *LHS, const SCEV *RHS);
   const SCEV *getUDivExactExpr(const SCEV *LHS, const SCEV *RHS);
@@ -1285,7 +1292,8 @@ public:
 
   /// Return LHS-RHS.  Minus is represented in SCEV as A+B*-1.
   const SCEV *getMinusSCEV(const SCEV *LHS, const SCEV *RHS,
-                           SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap);
+                           SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap,
+                           unsigned Depth = 0);
 
   /// Return a SCEV corresponding to a conversion of the input value to the
   /// specified type.  If the type must be extended, it is zero extended.
@@ -1398,11 +1406,11 @@ public:
   const SCEV *getExitCount(const Loop *L, BasicBlock *ExitingBlock);
 
   /// If the specified loop has a predictable backedge-taken count, return it,
-  /// otherwise return a SCEVCouldNotCompute object. The backedge-taken count
-  /// is the number of times the loop header will be branched to from within
-  /// the loop. This is one less than the trip count of the loop, since it
-  /// doesn't count the first iteration, when the header is branched to from
-  /// outside the loop.
+  /// otherwise return a SCEVCouldNotCompute object. The backedge-taken count is
+  /// the number of times the loop header will be branched to from within the
+  /// loop, assuming there are no abnormal exists like exception throws. This is
+  /// one less than the trip count of the loop, since it doesn't count the first
+  /// iteration, when the header is branched to from outside the loop.
   ///
   /// Note that it is not valid to call this method on a loop without a
   /// loop-invariant backedge-taken count (see
@@ -1417,8 +1425,10 @@ public:
   const SCEV *getPredicatedBackedgeTakenCount(const Loop *L,
                                               SCEVUnionPredicate &Predicates);
 
-  /// Similar to getBackedgeTakenCount, except return the least SCEV value
-  /// that is known never to be less than the actual backedge taken count.
+  /// When successful, this returns a SCEVConstant that is greater than or equal
+  /// to (i.e. a "conservative over-approximation") of the value returend by
+  /// getBackedgeTakenCount.  If such a value cannot be computed, it returns the
+  /// SCEVCouldNotCompute object.
   const SCEV *getMaxBackedgeTakenCount(const Loop *L);
 
   /// Return true if the backedge taken count is either the value returned by
@@ -1528,6 +1538,11 @@ public:
   /// Return true if the value of the given SCEV is unchanging in the
   /// specified loop.
   bool isLoopInvariant(const SCEV *S, const Loop *L);
+
+  /// Determine if the SCEV can be evaluated at loop's entry. It is true if it
+  /// doesn't depend on a SCEVUnknown of an instruction which is dominated by
+  /// the header of loop L.
+  bool isAvailableAtLoopEntry(const SCEV *S, const Loop *L);
 
   /// Return true if the given SCEV changes value in a known way in the
   /// specified loop.  This property being true implies that the value is
@@ -1684,8 +1699,12 @@ private:
   bool doesIVOverflowOnGT(const SCEV *RHS, const SCEV *Stride, bool IsSigned,
                           bool NoWrap);
 
-  /// Get add expr already created or create a new one
+  /// Get add expr already created or create a new one.
   const SCEV *getOrCreateAddExpr(SmallVectorImpl<const SCEV *> &Ops,
+                                 SCEV::NoWrapFlags Flags);
+
+  /// Get mul expr already created or create a new one.
+  const SCEV *getOrCreateMulExpr(SmallVectorImpl<const SCEV *> &Ops,
                                  SCEV::NoWrapFlags Flags);
 
 private:

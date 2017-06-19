@@ -37,7 +37,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopPredication.h"
-#include "llvm/Pass.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
@@ -48,6 +47,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
@@ -58,22 +58,24 @@ using namespace llvm;
 
 namespace {
 class LoopPredication {
-  ScalarEvolution *SE;
-
-  Loop *L;
-  const DataLayout *DL;
-  BasicBlock *Preheader;
-
   /// Represents an induction variable check:
   ///   icmp Pred, <induction variable>, <loop invariant limit>
   struct LoopICmp {
     ICmpInst::Predicate Pred;
     const SCEVAddRecExpr *IV;
     const SCEV *Limit;
-    LoopICmp(ICmpInst::Predicate Pred, const SCEVAddRecExpr *IV, const SCEV *Limit)
+    LoopICmp(ICmpInst::Predicate Pred, const SCEVAddRecExpr *IV,
+             const SCEV *Limit)
         : Pred(Pred), IV(IV), Limit(Limit) {}
     LoopICmp() {}
   };
+
+  ScalarEvolution *SE;
+
+  Loop *L;
+  const DataLayout *DL;
+  BasicBlock *Preheader;
+
   Optional<LoopICmp> parseLoopICmp(ICmpInst *ICI);
 
   Value *expandCheck(SCEVExpander &Expander, IRBuilder<> &Builder,
@@ -180,8 +182,10 @@ Optional<Value *> LoopPredication::widenICmpRangeCheck(ICmpInst *ICI,
   DEBUG(ICI->dump());
 
   auto RangeCheck = parseLoopICmp(ICI);
-  if (!RangeCheck)
+  if (!RangeCheck) {
+    DEBUG(dbgs() << "Failed to parse the loop latch condition!\n");
     return None;
+  }
 
   ICmpInst::Predicate Pred = RangeCheck->Pred;
   const SCEVAddRecExpr *IndexAR = RangeCheck->IV;

@@ -50,6 +50,7 @@ add_llvm_library(LLVMCodeGen
   LivePhysRegs.cpp
   LiveRangeCalc.cpp
   LiveRangeEdit.cpp
+  LiveRangeShrink.cpp
   LiveRegMatrix.cpp
   LiveRegUnits.cpp
   LiveStackAnalysis.cpp
