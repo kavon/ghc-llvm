@@ -26510,12 +26510,19 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // otherwise later stages may delete its contents!
   MBB->addSuccessor(retPt);
 
-  // currently needed to tell PEI that this block needs a prologue.
-  // NB: that will only happen right now for functions with ghccc
-  retPt->setIsEHPad(true); // this is also needed to satisfy verifier.
-
-  // NOTE: it would be nice if we could just mark the block as 
+  // we need to tell PEI that this block needs a prologue,
+  // so we mark it as an EHPad.
+  //
+  // NOTE: that will only happen right now for functions with ghccc.
+  // it would be nice if we could just mark the block as 
   // a "continuation point" instead of piggy-backing on EHPad.
+  //
+  // TODO implement a different marker ^
+  //
+  // originally I marked it as an EH pad because the machine verifier
+  // won't complain about the block, I believe? that might be outdated info
+  //
+  retPt->setIsEHPad(true);
 
 
   //////
@@ -26546,14 +26553,13 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // insert a label at the top of the retpt
 
-  // APInt idAP(64, id, /* isSigned */ false);
-  // std::string labName = idAP.toString(10, /* Signed */ false).append("_");
-  // MCSymbol *Label = MF->getContext().createTempSymbol(labName, true, false);
-  // BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+  // TODO: there's probably a cleaner way of building this Twine
+  APInt idAP(64, id, /* isSigned */ false);
+  std::string labName = idAP.toString(10, /* Signed */ false).append("_");
+  Twine labTwine(labName);
 
   retPt->setHasAddressTaken();
-  MCSymbol *Label = MF->getMMI().getAddrLabelSymbol(retPt);
-
+  MCSymbol *Label = MF->getMMI().getAddrLabelSymbol(retPt, &labTwine);
 
   //////////
   // compute the return address.
