@@ -26513,8 +26513,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // currently needed to tell PEI that this block needs a prologue.
   // NB: that will only happen right now for functions with ghccc
   retPt->setIsEHPad(true); // this is also needed to satisfy verifier.
-  
-  // retPt->setHasAddressTaken();  // FIXME: why does this crash llc?
 
   // NOTE: it would be nice if we could just mark the block as 
   // a "continuation point" instead of piggy-backing on EHPad.
@@ -26547,10 +26545,14 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   int64_t sp_argnum = MI.getOperand(MDBase + 2).getImm();
 
   // insert a label at the top of the retpt
-  APInt idAP(64, id, /* isSigned */ false);
-  std::string labName = idAP.toString(10, /* Signed */ false).append("_");
-  MCSymbol *Label = MF->getContext().createTempSymbol(labName, true, false);
-  BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+
+  // APInt idAP(64, id, /* isSigned */ false);
+  // std::string labName = idAP.toString(10, /* Signed */ false).append("_");
+  // MCSymbol *Label = MF->getContext().createTempSymbol(labName, true, false);
+  // BuildMI(*retPt, retPt->begin(), DL, TII->get(TargetOpcode::EH_LABEL)).addSym(Label);
+
+  retPt->setHasAddressTaken();
+  MCSymbol *Label = MF->getMMI().getAddrLabelSymbol(retPt);
 
 
   //////////
@@ -26563,7 +26565,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
     .addReg(X86::RIP)
     .addImm(1)
     .addReg(NoRegister)
-    .addMBB(retPt)
+    .addSym(Label)
     .addReg(NoRegister)
     ;
 

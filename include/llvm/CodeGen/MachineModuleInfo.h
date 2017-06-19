@@ -47,6 +47,7 @@ class BasicBlock;
 class CallInst;
 class Function;
 class MachineFunction;
+class MachineBasicBlock;
 class MMIAddrLabelMap;
 class Module;
 class TargetMachine;
@@ -201,10 +202,15 @@ public:
     return getAddrLabelSymbolToEmit(BB).front();
   }
 
+  MCSymbol *getAddrLabelSymbol(const MachineBasicBlock *MBB) {
+    return getAddrLabelSymbolToEmit(MBB).front();
+  }
+
   /// Return the symbol to be used for the specified basic block when its
   /// address is taken.  If other blocks were RAUW'd to this one, we may have
   /// to emit them as well, return the whole set.
   ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(const BasicBlock *BB);
+  ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(const MachineBasicBlock *MBB);
 
   /// If the specified function has had any references to address-taken blocks
   /// generated, but the block got deleted, return the symbol now so we can

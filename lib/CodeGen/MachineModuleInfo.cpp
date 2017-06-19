@@ -73,8 +73,17 @@ class MMIAddrLabelMap {
     Function *Fn;   // The containing function of the BasicBlock.
     unsigned Index; // The index in BBCallbacks for the BasicBlock.
   };
+  struct MachineAddrLabelSymEntry {
+    /// The symbols for the label.
+    TinyPtrVector<MCSymbol *> Symbols;
+    MachineFunction *MF;   // The containing function
+  };
 
   DenseMap<AssertingVH<BasicBlock>, AddrLabelSymEntry> AddrLabelSymbols;
+
+  // a map tracking symbols for MBBs who _do not_ have a corrsponding BasicBlock.
+  // any MBBs with a BasicBlock must use the AddrLabelSymbols map.
+  DenseMap<MachineBasicBlock*, MachineAddrLabelSymEntry> MBBLabelSymbols;
 
   /// Callbacks for the BasicBlock's that we have entries for.  We use this so
   /// we get notified if a block is deleted or RAUWd.
@@ -95,6 +104,7 @@ public:
   }
 
   ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(BasicBlock *BB);
+  ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(MachineBasicBlock *MBB);
 
   void takeDeletedSymbolsForFunction(Function *F,
                                      std::vector<MCSymbol*> &Result);
@@ -122,6 +132,23 @@ ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(BasicBlock *BB) {
   BBCallbacks.back().setMap(this);
   Entry.Index = BBCallbacks.size() - 1;
   Entry.Fn = BB->getParent();
+  Entry.Symbols.push_back(Context.createTempSymbol());
+  return Entry.Symbols;
+}
+
+ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(MachineBasicBlock *MBB) {
+  assert(MBB->hasAddressTaken() &&
+         "Shouldn't get label for machine basic block without address taken");
+  MachineAddrLabelSymEntry &Entry = MBBLabelSymbols[MBB];
+
+  // If we already had an entry for this block, just return it.
+  if (!Entry.Symbols.empty()) {
+    assert(MBB->getParent() == Entry.MF && "MachineFunction Parent changed");
+    return Entry.Symbols;
+  }
+
+  // Otherwise, this is a new entry, create a new symbol for it
+  Entry.MF = MBB->getParent();
   Entry.Symbols.push_back(Context.createTempSymbol());
   return Entry.Symbols;
 }
@@ -236,6 +263,19 @@ MachineModuleInfo::getAddrLabelSymbolToEmit(const BasicBlock *BB) {
     AddrLabelSymbols = new MMIAddrLabelMap(Context);
  return AddrLabelSymbols->getAddrLabelSymbolToEmit(const_cast<BasicBlock*>(BB));
 }
+
+ArrayRef<MCSymbol *>
+MachineModuleInfo::getAddrLabelSymbolToEmit(const MachineBasicBlock *MBB) {
+  const BasicBlock *BB = MBB->getBasicBlock();
+  if (BB)
+    return getAddrLabelSymbolToEmit(BB);
+
+  // Lazily create AddrLabelSymbols.
+  if (!AddrLabelSymbols)
+    AddrLabelSymbols = new MMIAddrLabelMap(Context);
+  return AddrLabelSymbols->getAddrLabelSymbolToEmit(const_cast<MachineBasicBlock*>(MBB));
+}
+
 
 void MachineModuleInfo::
 takeDeletedSymbolsForFunction(const Function *F,
