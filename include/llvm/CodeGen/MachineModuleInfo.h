@@ -133,6 +133,8 @@ class MachineModuleInfo : public ImmutablePass {
   const Function *LastRequest = nullptr; ///< Used for shortcut/cache.
   MachineFunction *LastResult = nullptr; ///< Used for shortcut/cache.
 
+  ArrayRef<MCSymbol *> getAddrLabelSymbolsWithRequest(const MachineBasicBlock *MBB, Twine *Name);
+
 public:
   static char ID; // Pass identification, replacement for typeid
 
@@ -202,8 +204,8 @@ public:
     return getAddrLabelSymbolToEmit(BB).front();
   }
 
-  MCSymbol *getAddrLabelSymbol(const MachineBasicBlock *MBB) {
-    return getAddrLabelSymbolToEmit(MBB).front();
+  MCSymbol *getAddrLabelSymbol(const MachineBasicBlock *MBB, Twine *Name = nullptr) {
+    return getAddrLabelSymbolsWithRequest(MBB, Name).front();
   }
 
   /// Return the symbol to be used for the specified basic block when its

@@ -104,7 +104,7 @@ public:
   }
 
   ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(BasicBlock *BB);
-  ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(MachineBasicBlock *MBB);
+  ArrayRef<MCSymbol *> getAddrLabelSymbolToEmit(MachineBasicBlock *MBB, Twine *Name);
 
   void takeDeletedSymbolsForFunction(Function *F,
                                      std::vector<MCSymbol*> &Result);
@@ -136,7 +136,7 @@ ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(BasicBlock *BB) {
   return Entry.Symbols;
 }
 
-ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(MachineBasicBlock *MBB) {
+ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(MachineBasicBlock *MBB, Twine *Name) {
   assert(MBB->hasAddressTaken() &&
          "Shouldn't get label for machine basic block without address taken");
   MachineAddrLabelSymEntry &Entry = MBBLabelSymbols[MBB];
@@ -148,8 +148,16 @@ ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(MachineBasicBlock
   }
 
   // Otherwise, this is a new entry, create a new symbol for it
+  MCSymbol *newSym;
+  if (Name) 
+    newSym = Context.createTempSymbol(*Name, 
+                                  /* AlwaysAddSuffix = */ true,
+                                  /* CanBeUnnamed = */ false);
+  else
+    newSym = Context.createTempSymbol();
+
   Entry.MF = MBB->getParent();
-  Entry.Symbols.push_back(Context.createTempSymbol());
+  Entry.Symbols.push_back(newSym);
   return Entry.Symbols;
 }
 
@@ -266,6 +274,11 @@ MachineModuleInfo::getAddrLabelSymbolToEmit(const BasicBlock *BB) {
 
 ArrayRef<MCSymbol *>
 MachineModuleInfo::getAddrLabelSymbolToEmit(const MachineBasicBlock *MBB) {
+  return getAddrLabelSymbolsWithRequest(MBB, nullptr);
+}
+
+ArrayRef<MCSymbol *>
+MachineModuleInfo::getAddrLabelSymbolsWithRequest(const MachineBasicBlock *MBB, Twine *Name) {
   const BasicBlock *BB = MBB->getBasicBlock();
   if (BB)
     return getAddrLabelSymbolToEmit(BB);
@@ -273,7 +286,7 @@ MachineModuleInfo::getAddrLabelSymbolToEmit(const MachineBasicBlock *MBB) {
   // Lazily create AddrLabelSymbols.
   if (!AddrLabelSymbols)
     AddrLabelSymbols = new MMIAddrLabelMap(Context);
-  return AddrLabelSymbols->getAddrLabelSymbolToEmit(const_cast<MachineBasicBlock*>(MBB));
+  return AddrLabelSymbols->getAddrLabelSymbolToEmit(const_cast<MachineBasicBlock*>(MBB), Name);
 }
 
 
