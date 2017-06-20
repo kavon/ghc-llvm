@@ -2613,8 +2613,11 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
     }
   }
 
+  // TODO(kavon): would be better to update MachineBlockPlacement to
+  // not align the block perhaps?
+
   // Emit an alignment directive for this block, if needed.
-  if (unsigned Align = MBB.getAlignment())
+  if (unsigned Align = MBB.getAlignment() && !MBB.isContPoint())
     EmitAlignment(Align);
 
   // If the block has its address taken, emit any labels that were used to

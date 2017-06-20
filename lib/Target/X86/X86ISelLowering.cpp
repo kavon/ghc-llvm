@@ -26516,6 +26516,8 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   retPt->setIsContPoint(true);
 
+  retPt->setIsEHPad(true); // temporary hack to work around LiveRangeCalc issue.
+
 
   //////
   // Fetch the metadata of this call to get information about
