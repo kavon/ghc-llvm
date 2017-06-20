@@ -81,6 +81,7 @@ class MMIAddrLabelMap {
 
   DenseMap<AssertingVH<BasicBlock>, AddrLabelSymEntry> AddrLabelSymbols;
 
+  // TODO(kavon): probably need to track whether the MBB was deleted and
   // a map tracking symbols for MBBs who _do not_ have a corrsponding BasicBlock.
   // any MBBs with a BasicBlock must use the AddrLabelSymbols map.
   DenseMap<MachineBasicBlock*, MachineAddrLabelSymEntry> MBBLabelSymbols;

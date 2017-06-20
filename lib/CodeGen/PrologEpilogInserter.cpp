@@ -299,7 +299,6 @@ void PEI::calculateCallFrameInfo(MachineFunction &Fn) {
 /// callee-saved registers, and placing prolog and epilog code.
 void PEI::calculateSaveRestoreBlocks(MachineFunction &Fn) {
   const MachineFrameInfo &MFI = Fn.getFrameInfo();
-  const bool GHC = Fn.getFunction()->getCallingConv() == CallingConv::GHC;
 
   // Even when we do not change any CSR, we still want to insert the
   // prologue and epilogue of the function.
@@ -321,7 +320,7 @@ void PEI::calculateSaveRestoreBlocks(MachineFunction &Fn) {
   // Save refs to entry and return blocks.
   SaveBlocks.push_back(&Fn.front());
   for (MachineBasicBlock &MBB : Fn) {
-    if (MBB.isEHFuncletEntry() || (GHC && MBB.isEHPad()))
+    if (MBB.isEHFuncletEntry() || MBB.isContPoint())
       SaveBlocks.push_back(&MBB);
     if (MBB.isReturnBlock())
       RestoreBlocks.push_back(&MBB);

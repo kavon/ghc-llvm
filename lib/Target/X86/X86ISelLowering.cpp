@@ -26508,7 +26508,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
 
   // set retpt as the succ of MBB to keep retpt alive.
   // otherwise later stages may delete its contents!
-  MBB->addSuccessor(retPt);
+  // MBB->addSuccessor(retPt);
 
   // we need to tell PEI that this block needs a prologue,
   // so we mark it as an EHPad.
@@ -26522,7 +26522,7 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // originally I marked it as an EH pad because the machine verifier
   // won't complain about the block, I believe? that might be outdated info
   //
-  retPt->setIsEHPad(true);
+  retPt->setIsContPoint(true);
 
 
   //////
