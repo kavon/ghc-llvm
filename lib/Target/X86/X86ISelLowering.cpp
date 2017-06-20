@@ -26506,22 +26506,14 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // transfer successors to retpt.
   retPt->transferSuccessorsAndUpdatePHIs(MBB);
 
-  // set retpt as the succ of MBB to keep retpt alive.
-  // otherwise later stages may delete its contents!
-  // MBB->addSuccessor(retPt);
+  // Set retpt as the succ of MBB to keep retpt alive.
+  // Other passes rely on the fact that all blocks in a
+  // function are reachable from the entry node, so, keeping
+  // the retPt alive in some way that _doesn't_ involve
+  // adding an edge from a block reachable from the entry
+  // node would break this major assumption.
+  MBB->addSuccessor(retPt);
 
-  // we need to tell PEI that this block needs a prologue,
-  // so we mark it as an EHPad.
-  //
-  // NOTE: that will only happen right now for functions with ghccc.
-  // it would be nice if we could just mark the block as 
-  // a "continuation point" instead of piggy-backing on EHPad.
-  //
-  // TODO implement a different marker ^
-  //
-  // originally I marked it as an EH pad because the machine verifier
-  // won't complain about the block, I believe? that might be outdated info
-  //
   retPt->setIsContPoint(true);
 
 
