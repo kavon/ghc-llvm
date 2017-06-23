@@ -26514,8 +26514,6 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // node would break this major assumption.
   MBB->addSuccessor(retPt);
 
-  retPt->setIsContPoint(true);
-
   retPt->setIsEHPad(true); // temporary hack to work around LiveRangeCalc issue.
 
 
@@ -26550,10 +26548,13 @@ X86TargetLowering::EmitCPSCall(MachineInstr &MI,
   // TODO: there's probably a cleaner way of building this Twine
   APInt idAP(64, id, /* isSigned */ false);
   std::string labName = idAP.toString(10, /* Signed */ false).append("_");
-  Twine labTwine(labName);
+  MCSymbol *Label = MF->getContext().createTempSymbol(labName, true, false);
+  // Twine labTwine(labName);
 
-  retPt->setHasAddressTaken();
-  MCSymbol *Label = MF->getMMI().getAddrLabelSymbol(retPt, &labTwine);
+  retPt->setContPoint(Label);
+
+  // retPt->setHasAddressTaken();
+  // MCSymbol *Label = MF->getMMI().getAddrLabelSymbol(retPt, &labTwine);
 
   //////////
   // compute the return address.

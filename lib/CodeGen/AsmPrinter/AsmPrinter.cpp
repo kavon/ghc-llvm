@@ -2617,8 +2617,11 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
   // not align the block perhaps?
 
   // Emit an alignment directive for this block, if needed.
-  if (unsigned Align = MBB.getAlignment() && !MBB.isContPoint())
+  if (unsigned Align = MBB.getAlignment() && MBB.getContPoint() == nullptr)
     EmitAlignment(Align);
+
+  if (MCSymbol *ContPoint = MBB.getContPoint())
+    OutStreamer->EmitLabel(ContPoint);
 
   // If the block has its address taken, emit any labels that were used to
   // reference the block.  It is possible that there is more than one label

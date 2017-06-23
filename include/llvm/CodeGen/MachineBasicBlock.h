@@ -113,7 +113,7 @@ private:
   bool AddressTaken = false;
 
   /// Indicate that this basic block is the target of a local return in CPS.
-  bool IsContPoint = false;
+  MCSymbol* ContPoint = nullptr;
 
   /// Indicate that this basic block is the entry block of an EH funclet.
   bool IsEHFuncletEntry = false;
@@ -357,13 +357,12 @@ public:
   /// log2(bytes).
   void setAlignment(unsigned Align) { Alignment = Align; }
 
-  /// Returns true if the block is the continuation of a CPS call,
-  /// i.e., the block is tail-called from another function.
-  bool isContPoint() const { return IsContPoint; }
+  /// Returns the symbol for the block if the block is the 
+  /// continuation of a CPS call, i.e., the block is tail-called
+  /// from another function. Otherwise it returns nullptr.
+  MCSymbol* getContPoint() const { return ContPoint; }
 
-  /// Returns true if the block is the continuation of a CPS call,
-  /// i.e., the block is tail-called from another function.
-  void setIsContPoint(bool V = true) { IsContPoint = V; }
+  void setContPoint(MCSymbol *L) { ContPoint = L; }
 
   /// Returns true if the block is a landing pad. That is this basic block is
   /// entered via an exception handler.

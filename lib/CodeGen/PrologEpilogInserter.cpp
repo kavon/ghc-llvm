@@ -320,7 +320,7 @@ void PEI::calculateSaveRestoreBlocks(MachineFunction &Fn) {
   // Save refs to entry and return blocks.
   SaveBlocks.push_back(&Fn.front());
   for (MachineBasicBlock &MBB : Fn) {
-    if (MBB.isEHFuncletEntry() || MBB.isContPoint())
+    if (MBB.isEHFuncletEntry() || MBB.getContPoint() != nullptr)
       SaveBlocks.push_back(&MBB);
     if (MBB.isReturnBlock())
       RestoreBlocks.push_back(&MBB);
