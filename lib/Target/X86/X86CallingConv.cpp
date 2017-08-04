@@ -205,4 +205,32 @@ bool CC_X86_32_VectorCall(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   return false; // No register was assigned - Continue the search.
 }
 
+/*
+  the return type {float, double, float, double} should be assigned as follows
+  
+  val1 : float   -> xmm1
+  val2 : double  -> xmm1
+  val3 : float   -> xmm2
+  val4 : double  -> xmm2
+
+  We guarentee that val1 and val2 contain at most one "real" value, with the
+  other being an undef constant.
+
+*/
+bool RetCC_X86_64_GHC_AssignFloats(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                   CCValAssign::LocInfo &LocInfo,
+                                   ISD::ArgFlagsTy &ArgFlags, CCState &State) {
+
+  // can we override "inreg" or something?
+
+  dbgs() << "Returned argument #" << ValNo << " has unhandled type "
+             << EVT(ValVT).getEVTString() << '\n';
+
+  // llvm_unreachable("GHC's assign floats function is not implemented.");
+
+  // unable to assign.
+  return true;
+
+}
+
 } // End llvm namespace

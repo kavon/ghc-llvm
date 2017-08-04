@@ -414,7 +414,7 @@ def RetCC_X86_64_HHVM: CallingConv<[
                                  RAX, R10, R11, R13, R14, R15]>>
 ]>;
 
-// X86-64 GHC call and "return" convention.
+// X86-64 GHC call convention.
 def CC_X86_64_GHC : CallingConv<[
   // Promote i8/i16/i32 arguments to i64.
   CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
@@ -435,6 +435,27 @@ def CC_X86_64_GHC : CallingConv<[
              CCIfSubtarget<"hasSSE2()",
              CCAssignToReg<[XMM8, XMM9, XMM10, XMM11, XMM12, XMM13,
                             XMM14, XMM15]>>>,
+
+  // TODO(kavon): create a GHC specific error.
+  CCCustom<"CC_X86_AnyReg_Error">
+]>;
+
+// X86-64 GHC return convention.
+def RetCC_X86_64_GHC : CallingConv<[
+  // Promote i8/i16/i32 arguments to i64.
+  CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
+
+  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, R5, R6, SpLim
+  CCIfType<[i64],
+            CCAssignToReg<[R13, RBP, R12, RBX, R14, RSI, RDI, R8, R9, R15]>>,
+
+  // Pass in STG registers: F1, F2, F3, F4, D1, D2
+  CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
+            CCIfSubtarget<"hasSSE1()",
+            CCCustom<"RetCC_X86_64_GHC_AssignFloats">>>,
+
+            // CCAssignToReg<[XMM1, XMM2, XMM3, XMM4, XMM5, XMM6]>>>,
+            // note: sse1 is xmm0-xmm7
 
   // TODO(kavon): create a GHC specific error.
   CCCustom<"CC_X86_AnyReg_Error">
@@ -466,8 +487,8 @@ def RetCC_X86_64 : CallingConv<[
   // HiPE uses RetCC_X86_64_HiPE
   CCIfCC<"CallingConv::HiPE", CCDelegateTo<RetCC_X86_64_HiPE>>,
 
-  // Handle GHC "returns"
-  CCIfCC<"CallingConv::GHC", CCDelegateTo<CC_X86_64_GHC>>,
+  // Handle GHC returns
+  CCIfCC<"CallingConv::GHC", CCDelegateTo<RetCC_X86_64_GHC>>,
 
   // Handle JavaScript calls.
   CCIfCC<"CallingConv::WebKit_JS", CCDelegateTo<RetCC_X86_64_WebKit_JS>>,

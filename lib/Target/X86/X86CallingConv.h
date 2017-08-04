@@ -48,6 +48,11 @@ bool CC_X86_32_VectorCall(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
                           CCValAssign::LocInfo &LocInfo,
                           ISD::ArgFlagsTy &ArgFlags, CCState &State);
 
+// fixme(kavon): explain what this is doing
+bool RetCC_X86_64_GHC_AssignFloats(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                   CCValAssign::LocInfo &LocInfo,
+                                   ISD::ArgFlagsTy &ArgFlags, CCState &State);
+
 inline bool CC_X86_AnyReg_Error(unsigned &, MVT &, MVT &,
                                 CCValAssign::LocInfo &, ISD::ArgFlagsTy &,
                                 CCState &) {
