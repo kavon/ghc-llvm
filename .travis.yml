@@ -1,8 +1,10 @@
 language: c++
 dist: trusty
 sudo: true
+notifications:
+  email: false
 
-# notes for speeding this up:
+# notes:
 # python, zlib, and clang 3.9 are already available.
 
 matrix:
