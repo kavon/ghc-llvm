@@ -16,6 +16,7 @@ matrix:
         - cmake
         - python
         - zlib1g-dev
+        - ninja
       env:
         - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
     
@@ -25,5 +26,5 @@ before_install:
 install:
     mkdir build install;
     pushd build;
-    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_WERROR ..;
-    make check-llvm -j3
+    cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_WERROR ..;
+    ninja check-llvm
