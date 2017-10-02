@@ -10,7 +10,7 @@ matrix:
         sources:
         - llvm-toolchain-trusty-4.0
         - ubuntu-toolchain-r-test
-        - ppa:adrozdoff/cmake
+        - sourceline: 'ppa:adrozdoff/cmake'
         packages:
         - clang-4.0
         - cmake
