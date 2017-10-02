@@ -2,6 +2,9 @@ language: c++
 dist: trusty
 sudo: true
 
+# notes for speeding this up:
+# python, zlib, and clang 3.9 are already available.
+
 matrix:
   include:
   - os: linux
@@ -12,11 +15,11 @@ matrix:
           - ubuntu-toolchain-r-test
           - sourceline: 'ppa:adrozdoff/cmake'
         packages:
-          - clang-4.0
+        #   - clang-4.0
           - cmake
-          - python
-          - zlib1g-dev
-          - ninja
+        #   - python
+        #   - zlib1g-dev
+        #   - ninja
     env:
       - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
     
@@ -26,5 +29,5 @@ before_install:
 install:
   - mkdir build install
   - pushd build
-  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
-  - ninja check-llvm
+  - cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
+  - make check-llvm -j3
