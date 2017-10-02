@@ -17,6 +17,7 @@ matrix:
         packages:
           - cmake
           - cmake-data
+          - ninja-build
     env:
       - MATRIX_EVAL="CC=clang && CXX=clang++"
     
@@ -26,5 +27,5 @@ before_install:
 install:
   - mkdir build install
   - pushd build
-  - cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
-  - make check-llvm -j3
+  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
+  - ninja check-llvm
