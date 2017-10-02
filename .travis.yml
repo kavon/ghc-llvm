@@ -28,4 +28,5 @@ install:
   - mkdir build install
   - pushd build
   - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
-  - ninja check-llvm
+  - ninja llc -j4
+  - ninja check-llvm-codegen-x86 -j4
