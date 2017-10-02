@@ -8,23 +8,23 @@ matrix:
     addons:
       apt:
         sources:
-        - llvm-toolchain-trusty-4.0
-        - ubuntu-toolchain-r-test
-        - sourceline: 'ppa:adrozdoff/cmake'
+          - llvm-toolchain-trusty-4.0
+          - ubuntu-toolchain-r-test
+          - sourceline: 'ppa:adrozdoff/cmake'
         packages:
-        - clang-4.0
-        - cmake
-        - python
-        - zlib1g-dev
-        - ninja
-      env:
-        - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
+          - clang-4.0
+          - cmake
+          - python
+          - zlib1g-dev
+          - ninja
+    env:
+      - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
     
 before_install:
-    - eval "${MATRIX_EVAL}"
+  - eval "${MATRIX_EVAL}"
     
 install:
-    mkdir build install;
-    pushd build;
-    cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_WERROR ..;
-    ninja check-llvm
+  - mkdir build install
+  - pushd build
+  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug ..
+  - ninja check-llvm
