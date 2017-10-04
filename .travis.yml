@@ -34,4 +34,4 @@ install:
 
 # part 2 of building + run x86 codegen tests.
 script:
-    - ninja check-llvm-codegen-x86 -j4
+  - ninja check-llvm-codegen-x86 -j4
