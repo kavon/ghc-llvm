@@ -5,7 +5,8 @@ notifications:
   email: false
 
 # notes:
-# python, zlib, and clang 3.9 are already available.
+# because of travis-ci.org time limits, this job will
+# only deploy built binaries to github (todo)
 
 matrix:
   include:
@@ -28,10 +29,7 @@ before_install:
   - pushd build
   - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_PARALLEL_LINK_JOBS=2 -DLLVM_TARGETS_TO_BUILD="X86" ..
     
-# part 1 of building, just build LLC
+# build assets
 install:
-  - ninja llc -j4
-
-# part 2 of building + run x86 codegen tests.
-script:
-  - ninja check-llvm-codegen-x86 -j4
+  - ninja llc opt -j4
+  
