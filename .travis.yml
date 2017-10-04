@@ -21,12 +21,17 @@ matrix:
     env:
       - MATRIX_EVAL="CC=clang && CXX=clang++"
     
+# run cmake
 before_install:
   - eval "${MATRIX_EVAL}"
-    
-install:
   - mkdir build install
   - pushd build
   - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_PARALLEL_LINK_JOBS=2 -DLLVM_TARGETS_TO_BUILD="X86" ..
+    
+# part 1 of building, just build LLC
+install:
   - ninja llc -j4
-  - ninja check-llvm-codegen-x86 -j4
+
+# part 2 of building + run x86 codegen tests.
+script:
+    - ninja check-llvm-codegen-x86 -j4
