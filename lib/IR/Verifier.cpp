@@ -1797,12 +1797,13 @@ void Verifier::verifyCPSCall(ImmutableCallSite CS) {
           "the number of (real) args given at this callsite.",
           CS);
 
-  // match callee param types with callsite arg types
+  // match callee param types with callsite arg types, allowing for a mismatch
+  // that can be resolved with a bitcast.
   for (unsigned ArgN = NumNonReal, ParamN = 0; 
         ArgN < TotalArgs; ArgN++, ParamN++) {
     const Type *ArgTy = CS.getArgument(ArgN)->getType();
-    const Type *ParamTy = FnTy->getParamType(ParamN);
-    Assert(ArgTy == ParamTy,
+    Type *ParamTy = FnTy->getParamType(ParamN);
+    Assert(ArgTy->canLosslesslyBitCastTo(ParamTy),
             "cpscall -- the callee's parameter type does\n"
             "not match the corresponding arg type at this callsite.\n"
             "The mismatched callee type parameter number, counting from 1, is:",
