@@ -19,7 +19,7 @@ matrix:
           - cmake
           - cmake-data
           - ninja-build
-          - binutils-gold
+        #   - binutils-gold
     env:
       - MATRIX_EVAL="CC=clang && CXX=clang++"
     
@@ -28,7 +28,7 @@ before_script:
   - eval "${MATRIX_EVAL}"
   - mkdir build install
   - pushd build
-  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_LIT_ARGS="-sv --no-progress-bar" -DLLVM_USE_LINKER=gold ..
+  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_LIT_ARGS="-sv --no-progress-bar" -DLLVM_USE_LINKER=lld ..
     
 # build assets
 script:
