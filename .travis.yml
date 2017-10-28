@@ -1,12 +1,16 @@
 language: c++
 dist: trusty
-sudo: false
+sudo: required
 notifications:
   email: false
 
 # notes:
-# because of travis-ci.org time limits, this job will
-# only deploy built binaries to github (todo)
+# - it is very difficult to stay within travis-ci.ORG time limit (50m), currently
+#   this runs reliably on travis-ci.COM (120m).
+#
+# - While sudo is not technically "required", we claim that it is so that Travis spins up
+#   a full virtual machine. We can't use Travis's Docker instances because of its disk 
+#   space limitations.
 
 matrix:
   include:
