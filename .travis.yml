@@ -28,7 +28,7 @@ before_script:
   - eval "${MATRIX_EVAL}"
   - mkdir build install
   - pushd build
-  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_LIT_ARGS="-sv --no-progress-bar" -DLLVM_PARALLEL_LINK_JOBS=2 -DLLVM_USE_LINKER=gold ..
+  - cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_LIT_ARGS="-sv --no-progress-bar" -DLLVM_PARALLEL_LINK_JOBS=2 -DLLVM_OPTIMIZED_TABLEGEN=On -DLLVM_INCLUDE_EXAMPLES=Off -DLLVM_USE_LINKER=gold ..
     
 # build assets
 script:
