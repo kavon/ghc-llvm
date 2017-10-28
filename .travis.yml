@@ -32,6 +32,5 @@ before_script:
     
 # build assets
 script:
-  - ninja llc opt -j4
   - ninja check-llvm-codegen-x86 -j4
   
